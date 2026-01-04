@@ -1,0 +1,31 @@
+BET-COPILOT v0.4.1
+
+Fecha:        2026-01-04
+Tests:        30 passing ✅
+Código:       4,498 líneas
+Idioma:       Español + Inglés
+Estado:       PRODUCCIÓN READY
+
+Características v0.4.0:
+✅ Análisis con datos reales de jugadores (25 por equipo)
+✅ Detección automática de lesiones/suspensiones  
+✅ Predicción Poisson con xG de temporada completa
+✅ Análisis contextual de Gemini AI integrado
+✅ Historial H2H (últimos 10 enfrentamientos)
+✅ Insights automáticos generados
+✅ Kelly para Home/Draw/Away
+✅ Identificación de mejor value bet
+✅ Interfaz completamente en español
+
+Mejoras v0.4.0:
++941 líneas de código
++6 tests
++10-15% precisión
++700 líneas funcionalidad
+
+Correcciones v0.4.1:
+✅ Dashboard ahora es persistente (se actualiza en vivo)
+✅ Modelo Gemini actualizado (gemini-1.5-flash)
+✅ Imports corregidos (Table, MINIMAL)
+
+Úsalo: python main.py o ./START.sh

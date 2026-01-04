@@ -1,0 +1,23 @@
+# Bet-Copilot Dependencies
+
+# API and HTTP
+aiohttp>=3.9.0
+
+# Database
+aiosqlite>=0.19.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# TUI (for future dashboard)
+rich>=13.0.0
+textual>=0.40.0
+prompt_toolkit>=3.0.0
+
+# AI
+google-generativeai>=0.3.0
+
+# Utilities
+python-dotenv>=1.0.0
