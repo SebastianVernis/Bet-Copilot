@@ -46,7 +46,7 @@ class GeminiClient:
     - External factors (weather, motivation)
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-pro"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-pro-latest"):
         """
         Initialize Gemini client.
         

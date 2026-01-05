@@ -6,9 +6,8 @@ import asyncio
 import logging
 from typing import Dict, List, Optional, Tuple
 
-from bet_copilot.api.football_client import FootballAPIClient
+from bet_copilot.api.football_client import FootballAPIClient, TeamStats, H2HStats, TeamLineup
 from bet_copilot.api.simple_football_data import SimpleFootballDataProvider
-from bet_copilot.models.soccer import TeamStats, H2HStats, TeamLineup
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,11 @@ class FootballClientWithFallback:
             team_id, team_name, league_id, season
         )
         
-        # Convert to TeamStats
+        # Convert to TeamStats (matches FootballAPIClient structure)
+        # Calculate missing fields
+        clean_sheets = int(simple_stats.matches_played * 0.3)  # Estimate 30%
+        failed_to_score = int(simple_stats.matches_played * 0.2)  # Estimate 20%
+        
         return TeamStats(
             team_id=team_id,
             team_name=team_name,
@@ -98,16 +101,18 @@ class FootballClientWithFallback:
             losses=simple_stats.losses,
             goals_for=simple_stats.goals_for,
             goals_against=simple_stats.goals_against,
+            clean_sheets=clean_sheets,
+            failed_to_score=failed_to_score,
+            avg_goals_for=simple_stats.avg_goals_for,
+            avg_goals_against=simple_stats.avg_goals_against,
             form=simple_stats.form,
         )
     
-    async def get_h2h(
+    async def get_h2h_stats(
         self,
         team1_id: int,
         team2_id: int,
-        team1_name: str,
-        team2_name: str,
-        limit: int = 10
+        last_n: int = 10
     ) -> H2HStats:
         """
         Get H2H statistics with fallback.
@@ -115,9 +120,7 @@ class FootballClientWithFallback:
         Args:
             team1_id: Team 1 ID
             team2_id: Team 2 ID
-            team1_name: Team 1 name
-            team2_name: Team 2 name
-            limit: Number of matches
+            last_n: Number of matches
             
         Returns:
             H2HStats from API or estimated
@@ -125,29 +128,33 @@ class FootballClientWithFallback:
         # Try API-Football first
         if self.use_api:
             try:
-                logger.info(f"Attempting H2H from API-Football: {team1_name} vs {team2_name}")
-                h2h = await self.api_client.get_h2h(team1_id, team2_id, limit)
+                logger.info(f"Attempting H2H from API-Football for teams {team1_id} vs {team2_id}")
+                h2h = await self.api_client.get_h2h_stats(team1_id, team2_id, last_n)
                 if h2h and h2h.matches_played > 0:
                     logger.info(f"✓ H2H retrieved from API-Football")
                     return h2h
             except Exception as e:
                 logger.warning(f"API-Football failed for H2H: {str(e)[:100]}")
         
-        # Fallback to simple provider
-        logger.info(f"Using SimpleProvider for H2H: {team1_name} vs {team2_name}")
+        # Fallback to simple provider - use generic names
+        logger.info(f"Using SimpleProvider for H2H: Team {team1_id} vs Team {team2_id}")
         simple_h2h = await self.simple_provider.get_h2h(
-            team1_id, team2_id, team1_name, team2_name, limit
+            team1_id, team2_id, f"Team {team1_id}", f"Team {team2_id}", last_n
         )
         
         # Convert to H2HStats
+        # Calculate averages
+        avg_home = 2.5  # League average estimate
+        avg_away = 2.0  # Slightly less for away
+        
         return H2HStats(
-            team1_id=team1_id,
-            team2_id=team2_id,
             matches_played=simple_h2h.matches_played,
-            team1_wins=simple_h2h.home_wins,
+            home_wins=simple_h2h.home_wins,
             draws=simple_h2h.draws,
-            team2_wins=simple_h2h.away_wins,
+            away_wins=simple_h2h.away_wins,
             last_5_results=simple_h2h.last_5_results,
+            avg_home_goals=avg_home,
+            avg_away_goals=avg_away,
         )
     
     async def get_team_lineup(
@@ -180,15 +187,78 @@ class FootballClientWithFallback:
         logger.info(f"Using SimpleProvider for {team_name} lineup")
         simple_lineup = await self.simple_provider.get_team_lineup(team_id, team_name)
         
-        # Convert to TeamLineup
+        # Convert to TeamLineup (matches FootballAPIClient structure)
         return TeamLineup(
             team_id=team_id,
             team_name=team_name,
             formation=simple_lineup.formation,
+            starting_xi=[],
+            substitutes=[],
             coach=None,
-            players=[],  # No player data in simple provider
-            missing_players=[],  # No injury data
+            missing_players=[],
         )
+    
+    async def get_team_players(
+        self,
+        team_id: int,
+        season: int = 2024
+    ) -> List:
+        """
+        Get team players with fallback.
+        
+        Args:
+            team_id: Team ID
+            season: Season year
+            
+        Returns:
+            List of PlayerStats (empty in simple provider)
+        """
+        # Try API-Football first
+        if self.use_api:
+            try:
+                logger.info(f"Attempting players from API-Football for team {team_id}")
+                players = await self.api_client.get_team_players(team_id, season)
+                if players:
+                    logger.info(f"✓ Players retrieved from API-Football")
+                    return players
+            except Exception as e:
+                logger.warning(f"API-Football failed for players: {str(e)[:100]}")
+        
+        # Fallback - no player data
+        logger.info(f"SimpleProvider has no player data")
+        return []
+    
+    async def get_team_injuries(
+        self,
+        team_id: int,
+        season: int,
+        league_id: int
+    ) -> List:
+        """
+        Get team injuries with fallback.
+        
+        Args:
+            team_id: Team ID
+            season: Season year
+            league_id: League ID
+            
+        Returns:
+            List of injured PlayerStats (empty in simple provider)
+        """
+        # Try API-Football first
+        if self.use_api:
+            try:
+                logger.info(f"Attempting injuries from API-Football for team {team_id}")
+                injuries = await self.api_client.get_team_injuries(team_id, season, league_id)
+                if injuries:
+                    logger.info(f"✓ Injuries retrieved from API-Football")
+                    return injuries
+            except Exception as e:
+                logger.warning(f"API-Football failed for injuries: {str(e)[:100]}")
+        
+        # Fallback - no injury data
+        logger.info(f"SimpleProvider has no injury data for team {team_id}")
+        return []
     
     async def search_team_by_name(
         self,

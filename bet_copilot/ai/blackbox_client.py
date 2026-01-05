@@ -43,7 +43,7 @@ class BlackboxClient:
     # Official Blackbox API endpoint (OpenAI-compatible)
     API_URL = "https://api.blackbox.ai/chat/completions"
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "blackboxai-pro"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "blackboxai"):
         """
         Initialize Blackbox client.
         

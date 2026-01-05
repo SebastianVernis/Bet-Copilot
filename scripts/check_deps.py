@@ -3,6 +3,13 @@
 Script para verificar que todas las dependencias están instaladas.
 """
 
+
+# Add project to path
+from pathlib import Path
+project_root = Path(__file__).parent.parent
+import sys
+sys.path.insert(0, str(project_root))
+
 import sys
 from rich.console import Console
 from rich.table import Table

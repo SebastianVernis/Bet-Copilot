@@ -6,8 +6,8 @@ Script para verificar todas las API keys configuradas.
 import sys
 from pathlib import Path
 
-# Add project to path
-project_root = Path(__file__).parent
+# Add project to path (parent of scripts/)
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from rich.console import Console
