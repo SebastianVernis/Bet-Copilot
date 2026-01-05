@@ -5,34 +5,20 @@ Analyzes news, injuries, form, and sentiment.
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 try:
-    # Use google.generativeai (the correct package)
-    import google.generativeai as genai
+    # Use google.genai (new SDK)
+    from google import genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
     genai = None
 
 from bet_copilot.config import GEMINI_API_KEY
+from bet_copilot.ai.types import ContextualAnalysis
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ContextualAnalysis:
-    """Result of AI contextual analysis."""
-
-    home_team: str
-    away_team: str
-    confidence: float  # 0-1, confidence in analysis
-    lambda_adjustment_home: float  # Multiplier for home lambda (e.g., 0.9 = -10%)
-    lambda_adjustment_away: float  # Multiplier for away lambda
-    key_factors: List[str]  # Important factors identified
-    sentiment: str  # "POSITIVE", "NEUTRAL", "NEGATIVE"
-    reasoning: str  # Explanation of adjustments
 
 
 class GeminiClient:
@@ -46,22 +32,22 @@ class GeminiClient:
     - External factors (weather, motivation)
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-pro-latest"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-exp"):
         """
         Initialize Gemini client.
         
         Args:
             api_key: Gemini API key
-            model: Model to use (default: gemini-pro)
+            model: Model to use (default: gemini-2.0-flash-exp)
         """
         self.api_key = api_key or GEMINI_API_KEY
         self.model_name = model
-        self.model = None
+        self.client = None
 
         if not GEMINI_AVAILABLE:
             logger.warning(
-                "google-generativeai not installed. Install with: "
-                "pip install google-generativeai"
+                "google-genai not installed. Install with: "
+                "pip install google-genai"
             )
             return
 
@@ -70,15 +56,14 @@ class GeminiClient:
             return
 
         try:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel(model)
+            self.client = genai.Client(api_key=self.api_key)
             logger.info(f"Gemini client initialized with model {model}")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini: {str(e)}")
 
     def is_available(self) -> bool:
         """Check if Gemini is available and configured."""
-        return GEMINI_AVAILABLE and self.model is not None
+        return GEMINI_AVAILABLE and self.client is not None
 
     async def analyze_match_context(
         self,
@@ -134,7 +119,10 @@ class GeminiClient:
 
     def _generate_response(self, prompt: str) -> str:
         """Generate response from Gemini (sync method)."""
-        response = self.model.generate_content(prompt)
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt
+        )
         return response.text
 
     def _build_analysis_prompt(
@@ -150,7 +138,7 @@ class GeminiClient:
         h2h_str = ", ".join(h2h_results) if h2h_results else "No data"
 
         prompt = f"""
-You are a sports analytics AI helping to predict football match outcomes.
+You are an expert football/soccer analyst with deep knowledge of tactics, player performance, and statistical trends.
 
 Match: {home_team} vs {away_team}
 
@@ -164,31 +152,53 @@ Context:
             prompt += f"\nAdditional context:\n{additional_context}\n"
 
         prompt += """
-Based on this context, provide lambda adjustments for our Poisson model:
+Your task is to analyze this match from multiple angles:
 
-Task:
-1. Analyze team form, momentum, and context
-2. Identify key factors (injuries, suspensions, motivation, etc.)
-3. Suggest lambda adjustments (multipliers) for expected goals
-   - Values: 0.8-1.2 (0.9 = -10%, 1.1 = +10%)
-   - Default is 1.0 (no adjustment)
-4. Explain reasoning
+1. **Tactical Analysis**:
+   - Consider playing styles (attacking vs defensive, possession vs counter)
+   - Formation matchups and tactical advantages
+   - How teams typically approach home vs away games
+
+2. **Key Factors**:
+   - Recent form and momentum shifts
+   - Injuries/suspensions of key players
+   - Motivation factors (relegation battle, title race, derby, etc.)
+   - Weather or venue conditions if relevant
+   - Fatigue from recent fixtures
+
+3. **Statistical Insights**:
+   - Historical trends between these teams
+   - Patterns in goals scored/conceded
+   - Likelihood of high/low-scoring game
+   - Expected intensity (fouls, cards, physicality)
+
+4. **Alternative Markets Hints**:
+   - Will this be a corner-heavy game? (attacking teams vs deep defenses)
+   - Card-heavy? (physical matchup, strict referee, rivalry)
+   - High shot count? (dominant possession teams)
+
+Based on your analysis, provide:
 
 Output format (strict JSON):
 {
     "home_adjustment": 1.0,
     "away_adjustment": 1.0,
     "confidence": 0.7,
-    "key_factors": ["Factor 1", "Factor 2"],
+    "key_factors": ["Factor 1", "Factor 2", "Factor 3"],
     "sentiment": "NEUTRAL",
-    "reasoning": "Brief explanation"
+    "reasoning": "2-3 sentence explanation covering tactical and contextual insights",
+    "alternative_markets_insights": {
+        "corners": "Prediction: High/Medium/Low - reason",
+        "cards": "Prediction: High/Medium/Low - reason",
+        "total_goals": "Prediction: High/Medium/Low - reason"
+    }
 }
 
-Important:
-- Be conservative (small adjustments)
-- Only deviate from 1.0 if strong evidence
-- Confidence: 0.0-1.0 (how confident in adjustments)
+Guidelines:
+- Lambda adjustments: 0.8-1.2 (conservative, only adjust with strong evidence)
+- Confidence: 0.0-1.0 (based on data quality and clarity of trends)
 - Sentiment: POSITIVE (home favored), NEUTRAL, NEGATIVE (away favored)
+- Focus on actionable insights, not generic commentary
 """
 
         return prompt

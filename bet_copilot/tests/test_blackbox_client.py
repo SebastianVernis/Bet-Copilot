@@ -4,7 +4,8 @@ Tests for BlackboxClient.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from bet_copilot.ai.blackbox_client import BlackboxClient, ContextualAnalysis
+from bet_copilot.ai.blackbox_client import BlackboxClient
+from bet_copilot.ai.types import ContextualAnalysis
 
 
 class TestBlackboxClient:
@@ -19,7 +20,7 @@ class TestBlackboxClient:
         """Test client initialization with API key."""
         client = BlackboxClient(api_key="test_key")
         assert client.api_key == "test_key"
-        assert client.model == "blackboxai-pro"
+        assert client.model == "blackboxai/anthropic/claude-sonnet-4"
         assert client.API_URL == "https://api.blackbox.ai/chat/completions"
     
     @patch('bet_copilot.ai.blackbox_client.BLACKBOX_API_KEY', '')

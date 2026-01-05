@@ -17,25 +17,25 @@ from rich.panel import Panel
 
 console = Console()
 
-# Dependencias requeridas
+# Dependencias requeridas (package_name: (import_name, description))
 REQUIRED_DEPS = {
-    'aiohttp': 'HTTP async client',
-    'aiosqlite': 'SQLite async',
-    'rich': 'Terminal UI',
-    'textual': 'Dashboard TUI',
-    'prompt_toolkit': 'Advanced input',
-    'google.generativeai': 'Gemini AI',
-    'pytest': 'Testing framework',
-    'pytest_asyncio': 'Async testing',
-    'dotenv': 'Environment variables',
+    'aiohttp': ('aiohttp', 'HTTP async client'),
+    'aiosqlite': ('aiosqlite', 'SQLite async'),
+    'rich': ('rich', 'Terminal UI'),
+    'textual': ('textual', 'Dashboard TUI'),
+    'prompt_toolkit': ('prompt_toolkit', 'Advanced input'),
+    'google-genai': ('google.genai', 'Gemini AI (new SDK)'),
+    'pytest': ('pytest', 'Testing framework'),
+    'pytest_asyncio': ('pytest_asyncio', 'Async testing'),
+    'python-dotenv': ('dotenv', 'Environment variables'),
 }
 
-# Dependencias opcionales
+# Dependencias opcionales (package_name: (import_name, description))
 OPTIONAL_DEPS = {
-    'pytest_cov': 'Coverage reports',
-    'black': 'Code formatter',
-    'mypy': 'Type checker',
-    'flake8': 'Linter',
+    'pytest-cov': ('pytest_cov', 'Coverage reports'),
+    'black': ('black', 'Code formatter'),
+    'mypy': ('mypy', 'Type checker'),
+    'flake8': ('flake8', 'Linter'),
 }
 
 
@@ -51,16 +51,15 @@ def check_dependencies():
     table.add_column("Estado", justify="center")
     
     required_missing = []
-    for dep, desc in REQUIRED_DEPS.items():
+    for pkg_name, (import_name, desc) in REQUIRED_DEPS.items():
         try:
-            module_name = dep.replace('.', '_')
-            __import__(module_name)
+            __import__(import_name)
             status = "[green]✓ OK[/green]"
         except ImportError:
             status = "[red]✗ FALTA[/red]"
-            required_missing.append(dep)
+            required_missing.append(pkg_name)
         
-        table.add_row(dep, desc, status)
+        table.add_row(pkg_name, desc, status)
     
     console.print(table)
     console.print()
@@ -72,15 +71,15 @@ def check_dependencies():
     table2.add_column("Estado", justify="center")
     
     optional_missing = []
-    for dep, desc in OPTIONAL_DEPS.items():
+    for pkg_name, (import_name, desc) in OPTIONAL_DEPS.items():
         try:
-            __import__(dep)
+            __import__(import_name)
             status = "[green]✓ OK[/green]"
         except ImportError:
             status = "[yellow]⚠ No instalado[/yellow]"
-            optional_missing.append(dep)
+            optional_missing.append(pkg_name)
         
-        table2.add_row(dep, desc, status)
+        table2.add_row(pkg_name, desc, status)
     
     console.print(table2)
     console.print()

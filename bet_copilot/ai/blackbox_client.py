@@ -6,28 +6,14 @@ Uses Blackbox API for contextual analysis when Gemini is unavailable.
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import aiohttp
 
 from bet_copilot.config import BLACKBOX_API_KEY
+from bet_copilot.ai.types import ContextualAnalysis
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ContextualAnalysis:
-    """Result of AI contextual analysis."""
-    
-    home_team: str
-    away_team: str
-    confidence: float  # 0-1, confidence in analysis
-    lambda_adjustment_home: float  # Multiplier for home lambda
-    lambda_adjustment_away: float  # Multiplier for away lambda
-    key_factors: List[str]  # Important factors identified
-    sentiment: str  # "POSITIVE", "NEUTRAL", "NEGATIVE"
-    reasoning: str  # Explanation of adjustments
 
 
 class BlackboxClient:
@@ -43,7 +29,7 @@ class BlackboxClient:
     # Official Blackbox API endpoint (OpenAI-compatible)
     API_URL = "https://api.blackbox.ai/chat/completions"
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "blackboxai"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "blackboxai/anthropic/claude-sonnet-4"):
         """
         Initialize Blackbox client.
         

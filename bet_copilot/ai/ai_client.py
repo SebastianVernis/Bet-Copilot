@@ -7,7 +7,8 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
-from bet_copilot.ai.gemini_client import GeminiClient, ContextualAnalysis
+from bet_copilot.ai.types import ContextualAnalysis
+from bet_copilot.ai.gemini_client import GeminiClient
 from bet_copilot.ai.blackbox_client import BlackboxClient
 from bet_copilot.ai.simple_analyzer import SimpleAnalyzer
 
