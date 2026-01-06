@@ -19,6 +19,24 @@ class MatchResult:
     away_xg: float  # Expected Goals for away team
     is_home: bool  # True if this is from home team's perspective
     
+    # Advanced statistics for alternative markets
+    home_corners: Optional[int] = None
+    away_corners: Optional[int] = None
+    home_shots: Optional[int] = None
+    away_shots: Optional[int] = None
+    home_shots_on_target: Optional[int] = None
+    away_shots_on_target: Optional[int] = None
+    home_fouls: Optional[int] = None
+    away_fouls: Optional[int] = None
+    home_yellow_cards: Optional[int] = None
+    away_yellow_cards: Optional[int] = None
+    home_red_cards: Optional[int] = None
+    away_red_cards: Optional[int] = None
+    home_offsides: Optional[int] = None
+    away_offsides: Optional[int] = None
+    home_possession: Optional[float] = None  # Percentage (0-100)
+    away_possession: Optional[float] = None
+    
     def __post_init__(self):
         """Validate data"""
         if self.home_xg < 0 or self.away_xg < 0:
@@ -163,6 +181,48 @@ class TeamForm:
                     form.append("L")
         
         return "".join(form)
+    
+    def average_corners(self, n: int = 5, home_only: bool = False, away_only: bool = False) -> float:
+        """Calculate average corners (for/against combined)"""
+        matches = self.get_recent_matches(n, home_only, away_only)
+        corners = [
+            (m.home_corners or 0) + (m.away_corners or 0)
+            for m in matches
+            if m.home_corners is not None and m.away_corners is not None
+        ]
+        return round(mean(corners), 2) if corners else 0.0
+    
+    def average_corners_for(self, n: int = 5, home_only: bool = False, away_only: bool = False) -> float:
+        """Calculate average corners won by this team"""
+        matches = self.get_recent_matches(n, home_only, away_only)
+        corners = [
+            m.home_corners if m.is_home else m.away_corners
+            for m in matches
+            if (m.home_corners is not None if m.is_home else m.away_corners is not None)
+        ]
+        return round(mean(corners), 2) if corners else 0.0
+    
+    def average_cards(self, n: int = 5, home_only: bool = False, away_only: bool = False) -> float:
+        """Calculate average cards (yellow + red) per match"""
+        matches = self.get_recent_matches(n, home_only, away_only)
+        cards = []
+        for m in matches:
+            home_cards = (m.home_yellow_cards or 0) + (m.home_red_cards or 0) * 2
+            away_cards = (m.away_yellow_cards or 0) + (m.away_red_cards or 0) * 2
+            total = home_cards + away_cards
+            if m.home_yellow_cards is not None or m.away_yellow_cards is not None:
+                cards.append(total)
+        return round(mean(cards), 2) if cards else 0.0
+    
+    def average_shots(self, n: int = 5, home_only: bool = False, away_only: bool = False) -> float:
+        """Calculate average shots per match"""
+        matches = self.get_recent_matches(n, home_only, away_only)
+        shots = [
+            m.home_shots if m.is_home else m.away_shots
+            for m in matches
+            if (m.home_shots is not None if m.is_home else m.away_shots is not None)
+        ]
+        return round(mean(shots), 2) if shots else 0.0
 
 
 @dataclass

@@ -5,11 +5,8 @@ Tests for Gemini AI client.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from bet_copilot.ai.gemini_client import (
-    GeminiClient,
-    ContextualAnalysis,
-    GEMINI_AVAILABLE,
-)
+from bet_copilot.ai.gemini_client import GeminiClient, GEMINI_AVAILABLE
+from bet_copilot.ai.types import ContextualAnalysis
 
 
 class TestGeminiClient:
@@ -22,7 +19,7 @@ class TestGeminiClient:
     def test_initialization(self):
         """Test client initialization."""
         assert self.client.api_key == "test_key"
-        assert self.client.model_name == "gemini-pro"
+        assert self.client.model_name == "gemini-2.0-flash-exp"
 
     def test_is_available(self):
         """Test availability check."""

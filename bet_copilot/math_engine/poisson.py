@@ -129,6 +129,39 @@ class PoissonCalculator:
             Standard deviation
         """
         return math.sqrt(lambda_)
+    
+    @staticmethod
+    def cumulative_probability(k: int, lambda_: float) -> float:
+        """
+        Calculate cumulative Poisson probability P(X <= k).
+        
+        This is the sum of probabilities from 0 to k.
+        
+        Args:
+            k: Upper bound (inclusive)
+            lambda_: Expected rate
+            
+        Returns:
+            Cumulative probability P(X <= k)
+            
+        Example:
+            >>> calc = PoissonCalculator()
+            >>> calc.cumulative_probability(2, 1.5)  # P(X <= 2 | λ=1.5)
+            0.8088
+        """
+        if k < 0:
+            return 0.0
+        
+        if lambda_ <= 0:
+            return 1.0
+        
+        # Sum probabilities from 0 to k
+        cumulative = sum(
+            PoissonCalculator.probability(i, lambda_)
+            for i in range(k + 1)
+        )
+        
+        return cumulative
 
 
 class MatchSimulator:

@@ -31,45 +31,55 @@ Testing:      pytest, pytest-asyncio
 
 ### Flujo Principal
 ```
-User Input → Odds API → Math Engine → AI Filter → Dashboard → Manual Execution
+User Input → News Feed → Odds API → Math Engine → Multi-AI Analysis → Dashboard → Manual Execution
 ```
 
 **Detalle**:
-1. **Extracción de datos**: APIs (cuotas + estadísticas)
-2. **Motor matemático**: Poisson + Monte Carlo para probabilidades
-3. **Filtro IA**: Gemini analiza contexto (lesiones, sentimiento)
-4. **Estrategia**: Criterio de Kelly para sizing
-5. **Dashboard**: Rich TUI muestra información
-6. **Usuario**: Ejecuta apuesta manualmente
+1. **News Aggregation**: RSS feeds gratuitos (BBC, ESPN) - NO API CALLS
+2. **Extracción de datos**: APIs (cuotas + estadísticas detalladas)
+3. **Motor matemático**: Poisson para mercados tradicionales + alternativos
+4. **Análisis colaborativo**: Gemini + Blackbox trabajan juntos (si ambos disponibles)
+5. **Estrategia**: Criterio de Kelly para sizing
+6. **Dashboard**: Rich TUI muestra información multi-dimensional
+7. **Usuario**: Ejecuta apuesta manualmente
 
-### Módulos Implementados (95%)
+### Módulos Implementados (100%)
 
 ```
 bet_copilot/
 ├── api/                    ✅ Clientes de APIs
 │   ├── circuit_breaker.py      - Pattern de protección
 │   ├── odds_client.py          - Cliente The Odds API
-│   └── football_client.py      - Cliente API-Football (NUEVO v0.4)
+│   └── football_client.py      - Cliente API-Football + stats detalladas (v0.5)
 ├── ai/                     ✅ Inteligencia Artificial
-│   └── gemini_client.py        - Cliente Gemini AI (NUEVO v0.3)
+│   ├── types.py                - ContextualAnalysis (shared type)
+│   ├── gemini_client.py        - Gemini AI con google-genai SDK (v0.5)
+│   ├── blackbox_client.py      - Blackbox AI fallback
+│   ├── collaborative_analyzer.py - Multi-AI consensus (NUEVO v0.5)
+│   ├── ai_client.py            - Unified client con fallback
+│   └── simple_analyzer.py      - Rule-based fallback
+├── news/                   ✅ News Aggregation (NUEVO v0.5)
+│   ├── news_scraper.py         - BBC + ESPN RSS (sin API calls)
+│   └── __init__.py
 ├── db/                     ✅ Persistencia
 │   ├── schema.sql              - DDL SQLite
 │   └── odds_repository.py      - CRUD + cache
 ├── math_engine/            ✅ Motor estadístico
-│   ├── poisson.py              - Distribución de Poisson
+│   ├── poisson.py              - Distribución de Poisson + cumulative
 │   ├── soccer_predictor.py     - Predictor de fútbol
-│   └── kelly.py                - Kelly Criterion (NUEVO v0.3)
+│   ├── kelly.py                - Kelly Criterion
+│   └── alternative_markets.py  - Corners, Cards, Shots (NUEVO v0.5)
 ├── models/                 ✅ Modelos de datos
 │   ├── odds.py                 - Cuotas y eventos
-│   └── soccer.py               - Stats de fútbol (xG, form)
+│   └── soccer.py               - Stats extendidas (corners, cards, shots) (v0.5)
 ├── services/               ✅ Orquestadores
 │   ├── odds_service.py         - Integra API + breaker + repo
-│   └── match_analyzer.py       - Análisis completo (NUEVO v0.4)
+│   └── match_analyzer.py       - Análisis multi-dimensional (v0.5)
 ├── ui/                     ✅ Interfaz terminal
-│   ├── dashboard.py            - Dashboard 4 zonas (NUEVO v0.3)
+│   ├── dashboard.py            - Dashboard 4 zonas
 │   └── styles.py               - Paleta neón
-├── tests/                  ✅ 30 tests (100% passing)
-├── cli.py                  ✅ CLI interactivo (NUEVO v0.3)
+├── tests/                  ✅ 96 tests (100% passing)
+├── cli.py                  ✅ CLI interactivo
 └── config.py               ✅ Configuración
 ```
 
@@ -94,10 +104,12 @@ python main.py
 ./START.sh
 
 # Demos específicos:
-python example_enhanced_analysis.py  # Demo análisis v0.4 (NUEVO)
-python example_soccer_prediction.py  # Demo predictor Poisson
-python demo_market_watch_simple.py   # Demo UI Rich
-python example_usage.py              # Demo cliente APIs
+python example_collaborative_analysis.py  # Demo análisis colaborativo + news (NUEVO v0.5)
+python example_alternative_markets.py     # Demo mercados alternativos (NUEVO v0.5)
+python example_enhanced_analysis.py       # Demo análisis completo
+python example_soccer_prediction.py       # Demo predictor Poisson
+python demo_market_watch_simple.py        # Demo UI Rich
+python example_usage.py                   # Demo cliente APIs
 ```
 
 ### Testing
@@ -422,19 +434,46 @@ class MatchPrediction:
     btts: Dict[str, float]
 ```
 
-### MockMarket (para UI)
+### AlternativeMarketPrediction (NUEVO v0.5)
 ```python
 @dataclass
-class MockMarket:
+class AlternativeMarketPrediction:
+    market_type: str              # "corners", "cards", "shots", etc.
     home_team: str
     away_team: str
-    market_type: str        # "Home Win", "Over 2.5", etc.
-    model_prob: float       # De nuestro modelo
-    odds: float             # Del bookmaker
-    ev: float               # Expected Value calculado
-    bookmaker: str
-    home_lambda: float
-    away_lambda: float
+    total_expected: float         # Valor esperado total
+    over_under_predictions: Dict  # Probabilidades Over/Under múltiples thresholds
+    home_expected: float          # Esperado para equipo local
+    away_expected: float          # Esperado para equipo visitante
+    distribution: Dict[int, float]  # Distribución completa de probabilidades
+    confidence: float             # 0-1
+    data_quality: str             # "high", "medium", "low"
+    reasoning: str
+```
+
+### CollaborativeAnalysis (NUEVO v0.5)
+```python
+@dataclass
+class CollaborativeAnalysis:
+    consensus: ContextualAnalysis      # Análisis consensuado
+    gemini_analysis: ContextualAnalysis  # Perspectiva Gemini
+    blackbox_analysis: ContextualAnalysis  # Perspectiva Blackbox
+    agreement_score: float             # 0-1, nivel de acuerdo
+    confidence_boost: float            # Boost de confianza por acuerdo
+    divergence_points: List[str]       # Puntos de desacuerdo
+```
+
+### NewsArticle (NUEVO v0.5)
+```python
+@dataclass
+class NewsArticle:
+    title: str
+    url: str
+    published: datetime
+    source: str                    # "BBC Sport", "ESPN"
+    summary: str
+    teams_mentioned: List[str]     # Equipos detectados
+    category: str                  # "injury", "transfer", "match_preview"
 ```
 
 ---
@@ -517,30 +556,173 @@ Antes de considerar una feature completa:
 
 ---
 
-## 🎯 Próximas Prioridades
+## 🎯 Nuevas Funcionalidades v0.5 (2026-01-04)
 
-Según roadmap del proyecto:
+### 🤝 Análisis Colaborativo Multi-AI
 
-1. **API-Football Client** (pendiente)
-   - Patrón similar a OddsAPIClient
-   - Endpoints: fixtures, h2h, team stats
+Cuando **ambas IAs están disponibles** (Gemini + Blackbox), el sistema ejecuta:
 
-2. **Kelly Calculator** (pendiente)
-   - Fórmula: f* = (p × b - q) / b
-   - Modos: full Kelly, 1/2 Kelly, 1/4 Kelly
+1. **Análisis paralelo**: Ambas IAs analizan independientemente
+2. **Merge inteligente**: Combina resultados ponderando por confianza
+3. **Detección de divergencias**: Identifica puntos de desacuerdo
+4. **Boost de confianza**: +20% máximo cuando acuerdo >80%
 
-3. **Gemini Integration** (pendiente)
-   - Análisis de noticias (lesiones, suspensiones)
-   - Ajuste de lambdas según contexto
+```python
+from bet_copilot.ai.collaborative_analyzer import CollaborativeAnalyzer
 
-4. **Dashboard 4 Zonas** (pendiente)
-   - Zona A: API Health
-   - Zona B: Active Tasks
-   - Zona C: Market Watch (implementada)
-   - Zona D: System Logs
+analyzer = CollaborativeAnalyzer()
+
+if analyzer.is_collaborative_available():
+    result = await analyzer.analyze_match_comprehensive(
+        home_team, away_team, home_form, away_form, h2h, context
+    )
+    
+    print(f"Agreement: {result.agreement_score:.0%}")
+    print(f"Confidence: {result.consensus.confidence:.0%}")
+    print(f"Boost: +{result.confidence_boost:.0%}")
+```
+
+### 📰 News Feed Sin API Calls
+
+**Fuentes gratuitas**:
+- BBC Sport RSS (feeds.bbci.co.uk/sport/football/rss.xml)
+- ESPN Soccer RSS (espn.com/espn/rss/soccer/news)
+
+**Features**:
+- ✅ Zero API calls / Zero cost
+- ✅ Cache de 1 hora (configurable)
+- ✅ Detección automática de equipos mencionados
+- ✅ Categorización (injury, transfer, match_preview, general)
+- ✅ Filtros por equipos y categorías
+
+```python
+from bet_copilot.news import NewsScraper
+
+scraper = NewsScraper(cache_ttl=3600)
+
+# Obtener últimas noticias
+news = await scraper.fetch_all_news(max_per_source=15)
+
+# Filtrar por equipos
+relevant = scraper.filter_by_teams(news, ["Arsenal", "Chelsea"])
+
+# Solo lesiones/suspensiones
+injuries = scraper.filter_by_category(news, ["injury"])
+```
+
+### 📐 Mercados Alternativos
+
+**Predicciones implementadas**:
+- **Corners** (tiros de esquina)
+- **Cards** (tarjetas amarillas/rojas) con ajuste por árbitro
+- **Shots** (tiros totales)
+- **Shots on target** (tiros a puerta)
+- **Offsides** (fueras de juego)
+
+**Modelo matemático**:
+- Usa distribución de Poisson
+- Calcula Over/Under para múltiples thresholds
+- Distribución completa de probabilidades
+- Assessment de calidad de datos
+
+```python
+from bet_copilot.math_engine.alternative_markets import AlternativeMarketsPredictor
+
+predictor = AlternativeMarketsPredictor()
+
+# Predicción de corners
+corners = predictor.predict_corners(home_team_form, away_team_form)
+print(f"Expected corners: {corners.total_expected:.1f}")
+print(f"Over 10.5 prob: {corners.over_under_predictions[10.5]['over']:.1%}")
+
+# Tarjetas con árbitro estricto
+cards = predictor.predict_cards(
+    home_team_form, away_team_form,
+    referee_factor=1.2  # +20% por árbitro conocido por ser estricto
+)
+```
+
+### 🔄 Flujo Integrado Completo
+
+```python
+from bet_copilot.services.match_analyzer import MatchAnalyzer
+
+analyzer = MatchAnalyzer(
+    use_collaborative_analysis=True  # Habilita modo colaborativo
+)
+
+# Análisis completo
+analysis = await analyzer.analyze_match(
+    "Manchester City", "Liverpool",
+    league_id=39, season=2024,
+    include_players=True,
+    include_ai_analysis=True
+)
+
+# Resultados disponibles:
+analysis.relevant_news            # Noticias del día (sin API)
+analysis.collaborative_analysis   # Consenso Gemini+Blackbox
+analysis.corners_prediction       # Predicción de esquinas
+analysis.cards_prediction         # Predicción de tarjetas
+analysis.shots_prediction         # Predicción de tiros
+analysis.prediction               # Predicción tradicional ajustada por IA
+analysis.kelly_home              # Recomendación Kelly para victoria local
+```
+
+---
+
+## 🎯 Roadmap Completado
+
+### ✅ Completado v0.5
+
+1. ✅ **API-Football Client extendido**
+   - get_fixture_statistics() - 12+ métricas por partido
+   - get_team_recent_matches_with_stats() - Historial detallado
+   - Parsing de corners, shots, cards, fouls, possession
+
+2. ✅ **Kelly Calculator**
+   - Implementado en v0.3
+   - Modos: full Kelly, fractional Kelly
+
+3. ✅ **Gemini Integration avanzada**
+   - Migrado a google-genai SDK
+   - Prompts extendidos con análisis táctico
+   - Insights de mercados alternativos
+
+4. ✅ **Análisis colaborativo**
+   - Sistema de consenso multi-AI
+   - Detección de divergencias
+   - Confidence boosting
+
+5. ✅ **News Aggregation**
+   - RSS feeds gratuitos
+   - Cache inteligente
+   - Categorización automática
+
+6. ✅ **Alternative Markets**
+   - Predictor completo para 5 mercados
+   - Distribuciones de Poisson
+   - Over/Under múltiples thresholds
+
+### 🔮 Próximas Mejoras
+
+1. **Dashboard 4 Zonas mejorado**
+   - Zona News Feed en tiempo real
+   - Zona Multi-AI Agreement Score
+   - Zona Alternative Markets
+
+2. **Más fuentes de datos**
+   - Integrar APIs gratuitas adicionales
+   - Web scraping con rate limiting
+
+3. **Backtesting Engine**
+   - Validar predicciones históricas
+   - Calcular ROI real
 
 ---
 
 **Última actualización**: 2026-01-04  
-**Proyecto**: Bet-Copilot v0.2.0  
+**Proyecto**: Bet-Copilot v0.5.0  
+**Código**: ~7,600 líneas Python  
+**Tests**: 96 passing (100% coverage core features)  
 **Autor**: Documentación generada para agentes IA

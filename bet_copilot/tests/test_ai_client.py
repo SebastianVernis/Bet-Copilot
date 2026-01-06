@@ -5,7 +5,7 @@ Tests for unified AI client with fallback.
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from bet_copilot.ai.ai_client import AIClient, create_ai_client
-from bet_copilot.ai.simple_analyzer import ContextualAnalysis
+from bet_copilot.ai.types import ContextualAnalysis
 
 
 class TestAIClient:

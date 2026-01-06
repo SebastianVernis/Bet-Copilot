@@ -4,24 +4,11 @@ Uses statistical heuristics when AI providers are unavailable.
 """
 
 import logging
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from bet_copilot.ai.types import ContextualAnalysis
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ContextualAnalysis:
-    """Result of AI contextual analysis."""
-    
-    home_team: str
-    away_team: str
-    confidence: float
-    lambda_adjustment_home: float
-    lambda_adjustment_away: float
-    key_factors: List[str]
-    sentiment: str
-    reasoning: str
 
 
 class SimpleAnalyzer:

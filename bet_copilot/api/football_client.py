@@ -555,6 +555,165 @@ class FootballAPIClient:
             logger.error(f"Error searching team: {str(e)}")
             return None
 
+    async def get_fixture_statistics(
+        self, fixture_id: int
+    ) -> Dict[str, Dict[str, int]]:
+        """
+        Get detailed statistics for a specific fixture.
+        
+        Returns statistics like corners, shots, cards, etc.
+        
+        Args:
+            fixture_id: Fixture ID
+            
+        Returns:
+            Dict with home and away statistics:
+            {
+                "home": {"corners": 5, "shots": 12, "shots_on_target": 6, ...},
+                "away": {"corners": 3, "shots": 8, ...}
+            }
+        """
+        params = {"fixture": fixture_id}
+        
+        data = await self._make_request("fixtures/statistics", params)
+        
+        response = data.get("response", [])
+        
+        if not response or len(response) < 2:
+            logger.warning(f"No statistics found for fixture {fixture_id}")
+            return {"home": {}, "away": {}}
+        
+        home_stats_raw = response[0].get("statistics", [])
+        away_stats_raw = response[1].get("statistics", [])
+        
+        def parse_stats(stats_list: List[Dict]) -> Dict[str, int]:
+            """Parse API statistics into dict."""
+            result = {}
+            
+            stat_mapping = {
+                "Corner Kicks": "corners",
+                "Total Shots": "shots",
+                "Shots on Goal": "shots_on_target",
+                "Shots off Goal": "shots_off_target",
+                "Blocked Shots": "shots_blocked",
+                "Fouls": "fouls",
+                "Yellow Cards": "yellow_cards",
+                "Red Cards": "red_cards",
+                "Offsides": "offsides",
+                "Ball Possession": "possession",
+                "Total passes": "passes",
+                "Passes accurate": "passes_accurate",
+                "Passes %": "passes_percentage",
+            }
+            
+            for stat in stats_list:
+                stat_type = stat.get("type")
+                stat_value = stat.get("value")
+                
+                if stat_type in stat_mapping:
+                    key = stat_mapping[stat_type]
+                    
+                    # Handle special cases
+                    if stat_value is None:
+                        result[key] = 0
+                    elif isinstance(stat_value, str):
+                        # Possession is like "65%"
+                        if "%" in stat_value:
+                            result[key] = int(stat_value.replace("%", ""))
+                        else:
+                            try:
+                                result[key] = int(stat_value)
+                            except ValueError:
+                                result[key] = 0
+                    else:
+                        result[key] = int(stat_value)
+            
+            return result
+        
+        home_stats = parse_stats(home_stats_raw)
+        away_stats = parse_stats(away_stats_raw)
+        
+        logger.info(
+            f"Fixture {fixture_id} stats: "
+            f"Home corners={home_stats.get('corners', 0)}, "
+            f"Away corners={away_stats.get('corners', 0)}"
+        )
+        
+        return {"home": home_stats, "away": away_stats}
+    
+    async def get_team_recent_matches_with_stats(
+        self,
+        team_id: int,
+        season: int,
+        league_id: int,
+        last_n: int = 5
+    ) -> List[Dict]:
+        """
+        Get recent matches for a team with detailed statistics.
+        
+        Useful for building historical data for alternative markets.
+        
+        Args:
+            team_id: Team ID
+            season: Season year
+            league_id: League ID
+            last_n: Number of recent matches
+            
+        Returns:
+            List of dicts with match info and statistics
+        """
+        # First get recent fixtures
+        params = {
+            "team": team_id,
+            "season": season,
+            "league": league_id,
+            "last": last_n
+        }
+        
+        data = await self._make_request("fixtures", params)
+        fixtures_data = data.get("response", [])
+        
+        matches = []
+        
+        for fixture_data in fixtures_data:
+            fixture = fixture_data.get("fixture", {})
+            teams = fixture_data.get("teams", {})
+            goals = fixture_data.get("goals", {})
+            
+            fixture_id = fixture.get("id")
+            status = fixture.get("status", {}).get("short")
+            
+            # Only get stats for finished matches
+            if status != "FT":
+                continue
+            
+            # Get detailed statistics
+            try:
+                stats = await self.get_fixture_statistics(fixture_id)
+                
+                match_info = {
+                    "fixture_id": fixture_id,
+                    "date": fixture.get("date"),
+                    "home_team": teams.get("home", {}).get("name"),
+                    "away_team": teams.get("away", {}).get("name"),
+                    "home_goals": goals.get("home", 0),
+                    "away_goals": goals.get("away", 0),
+                    "home_stats": stats.get("home", {}),
+                    "away_stats": stats.get("away", {}),
+                }
+                
+                matches.append(match_info)
+                
+                # Respect rate limits
+                await asyncio.sleep(2)  # 2 seconds between requests
+                
+            except FootballAPIError as e:
+                logger.warning(f"Could not fetch stats for fixture {fixture_id}: {e}")
+                continue
+        
+        logger.info(f"Fetched {len(matches)} matches with stats for team {team_id}")
+        return matches
+    
     async def close(self):
         """Clean up resources."""
         pass
