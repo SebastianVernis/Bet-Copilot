@@ -555,8 +555,17 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
 
 def main():
     """Entry point for CLI."""
-    cli = BetCopilotCLI()
-    asyncio.run(cli.run())
+    import sys
+    
+    # Check for TUI mode flag
+    if "--tui" in sys.argv or "--textual" in sys.argv:
+        # Run Textual TUI dashboard
+        from bet_copilot.ui.textual_dashboard import run_textual_dashboard
+        run_textual_dashboard()
+    else:
+        # Run traditional Rich CLI
+        cli = BetCopilotCLI()
+        asyncio.run(cli.run())
 
 
 if __name__ == "__main__":

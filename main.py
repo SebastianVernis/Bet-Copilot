@@ -2,6 +2,11 @@
 """
 Bet-Copilot - Main entry point
 Speculative Sports Analysis System
+
+Usage:
+    python main.py              # Rich CLI mode (default)
+    python main.py --tui        # Textual TUI dashboard mode
+    python main.py --textual    # Textual TUI dashboard mode (alias)
 """
 
 import sys

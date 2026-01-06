@@ -29,7 +29,8 @@ nano .env  # Agregar tus API keys
 python scripts/verify_apis.py
 
 # 5. ¡Ejecutar!
-python main.py
+python main.py              # CLI mode (Rich)
+python main.py --tui        # TUI Dashboard mode (Textual) ⭐ NEW
 ```
 
 **Demo sin instalación**:
@@ -40,6 +41,16 @@ python examples/DEMO.py
 ---
 
 ## ✨ Características Principales
+
+### 🆕 **v0.6 - Textual TUI Dashboard** (2026-01-06)
+
+#### 🎨 Dashboard Interactivo Completo
+- **Textual TUI** - Interfaz moderna y reactiva en terminal
+- **Persistencia de estado** - Recuerda tu última sesión
+- **6 zonas especializadas** - API Health, News, Markets, Alt Markets, Logs, Input
+- **Auto-refresh** - Datos en tiempo real sin intervención
+- **Keyboard shortcuts** - Navegación rápida (q, r, n, m, h)
+- **Dual mode** - Elige entre CLI tradicional o TUI interactivo
 
 ### 🆕 **v0.5 - Análisis Multi-Dimensional** (2026-01-04)
 
@@ -104,6 +115,8 @@ Fallback: SimpleProvider  → Estimaciones ⭐⭐⭐
 
 ## 📋 Comandos Disponibles
 
+### Modo CLI (Rich - Default)
+
 ```bash
 ➜ bet-copilot dashboard          # Dashboard 4 zonas en vivo
 ➜ bet-copilot mercados           # Obtener mercados de apuestas
@@ -112,14 +125,40 @@ Fallback: SimpleProvider  → Estimaciones ⭐⭐⭐
 ➜ bet-copilot ayuda              # Mostrar ayuda
 ```
 
+### Modo TUI (Textual - Interactive) ⭐ NEW
+
+```bash
+# Iniciar TUI Dashboard
+python main.py --tui
+
+# Comandos dentro del TUI:
+> mercados soccer_epl            # Obtener mercados
+> analizar Arsenal vs Chelsea    # Analizar partido
+> Arsenal vs Chelsea             # Análisis directo (sin "analizar")
+> salud                          # Check API health
+> ayuda                          # Mostrar ayuda
+```
+
 ### Atajos de Teclado
 
+#### CLI Mode (Rich)
 ```
 ↑/↓         Navegar historial de comandos
 Tab         Autocompletar comandos y argumentos
 Ctrl+R      Búsqueda incremental en historial
 ←/→         Mover cursor en la línea
 Ctrl+A/E    Ir a inicio/fin de línea
+```
+
+#### TUI Mode (Textual) ⭐ NEW
+```
+q           Salir de la aplicación
+r           Refrescar todos los datos
+n           Mostrar/ocultar feed de noticias
+m           Obtener mercados (última liga)
+h           Mostrar ayuda
+Ctrl+C      Salir
+Enter       Enviar comando
 ```
 
 ---
