@@ -138,67 +138,68 @@ class GeminiClient:
         h2h_str = ", ".join(h2h_results) if h2h_results else "No data"
 
         prompt = f"""
-You are an expert football/soccer analyst with deep knowledge of tactics, player performance, and statistical trends.
+Eres un analista experto de fútbol con profundo conocimiento de tácticas, rendimiento de jugadores y tendencias estadísticas.
 
-Match: {home_team} vs {away_team}
+Partido: {home_team} vs {away_team}
 
-Context:
-- Home team form (last 5): {home_form} (W=Win, D=Draw, L=Loss)
-- Away team form (last 5): {away_form}
-- Head-to-head (last 5): {h2h_str} (H=Home win, A=Away win, D=Draw)
+Contexto:
+- Forma equipo local (últimos 5): {home_form} (W=Victoria, D=Empate, L=Derrota)
+- Forma equipo visitante (últimos 5): {away_form}
+- Historial directo (últimos 5): {h2h_str} (H=Victoria local, A=Victoria visitante, D=Empate)
 """
 
         if additional_context:
-            prompt += f"\nAdditional context:\n{additional_context}\n"
+            prompt += f"\nContexto adicional:\n{additional_context}\n"
 
         prompt += """
-Your task is to analyze this match from multiple angles:
+Tu tarea es analizar este partido desde múltiples ángulos:
 
-1. **Tactical Analysis**:
-   - Consider playing styles (attacking vs defensive, possession vs counter)
-   - Formation matchups and tactical advantages
-   - How teams typically approach home vs away games
+1. **Análisis Táctico**:
+   - Considera estilos de juego (ofensivo vs defensivo, posesión vs contraataque)
+   - Enfrentamientos de formaciones y ventajas tácticas
+   - Cómo los equipos típicamente abordan partidos de local vs visitante
 
-2. **Key Factors**:
-   - Recent form and momentum shifts
-   - Injuries/suspensions of key players
-   - Motivation factors (relegation battle, title race, derby, etc.)
-   - Weather or venue conditions if relevant
-   - Fatigue from recent fixtures
+2. **Factores Clave**:
+   - Forma reciente y cambios de momentum
+   - Lesiones/suspensiones de jugadores clave
+   - Factores de motivación (lucha por descenso, carrera por título, derbi, etc.)
+   - Condiciones climáticas o de estadio si son relevantes
+   - Fatiga por partidos recientes
 
-3. **Statistical Insights**:
-   - Historical trends between these teams
-   - Patterns in goals scored/conceded
-   - Likelihood of high/low-scoring game
-   - Expected intensity (fouls, cards, physicality)
+3. **Insights Estadísticos**:
+   - Tendencias históricas entre estos equipos
+   - Patrones en goles marcados/recibidos
+   - Probabilidad de partido con muchos/pocos goles
+   - Intensidad esperada (faltas, tarjetas, fisicalidad)
 
-4. **Alternative Markets Hints**:
-   - Will this be a corner-heavy game? (attacking teams vs deep defenses)
-   - Card-heavy? (physical matchup, strict referee, rivalry)
-   - High shot count? (dominant possession teams)
+4. **Pistas de Mercados Alternativos**:
+   - ¿Será un partido con muchos corners? (equipos ofensivos vs defensas cerradas)
+   - ¿Muchas tarjetas? (enfrentamiento físico, árbitro estricto, rivalidad)
+   - ¿Alto conteo de tiros? (equipos con posesión dominante)
 
-Based on your analysis, provide:
+Basado en tu análisis, proporciona:
 
-Output format (strict JSON):
+Formato de salida (JSON estricto):
 {
     "home_adjustment": 1.0,
     "away_adjustment": 1.0,
     "confidence": 0.7,
     "key_factors": ["Factor 1", "Factor 2", "Factor 3"],
     "sentiment": "NEUTRAL",
-    "reasoning": "2-3 sentence explanation covering tactical and contextual insights",
+    "reasoning": "Explicación de 2-3 oraciones cubriendo insights tácticos y contextuales EN ESPAÑOL",
     "alternative_markets_insights": {
-        "corners": "Prediction: High/Medium/Low - reason",
-        "cards": "Prediction: High/Medium/Low - reason",
-        "total_goals": "Prediction: High/Medium/Low - reason"
+        "corners": "Predicción: Alto/Medio/Bajo - razón",
+        "cards": "Predicción: Alto/Medio/Bajo - razón",
+        "total_goals": "Predicción: Alto/Medio/Bajo - razón"
     }
 }
 
-Guidelines:
-- Lambda adjustments: 0.8-1.2 (conservative, only adjust with strong evidence)
-- Confidence: 0.0-1.0 (based on data quality and clarity of trends)
-- Sentiment: POSITIVE (home favored), NEUTRAL, NEGATIVE (away favored)
-- Focus on actionable insights, not generic commentary
+Directrices:
+- Ajustes lambda: 0.8-1.2 (conservador, solo ajustar con evidencia fuerte)
+- Confianza: 0.0-1.0 (basada en calidad de datos y claridad de tendencias)
+- Sentimiento: POSITIVE (local favorecido), NEUTRAL, NEGATIVE (visitante favorecido)
+- Enfócate en insights accionables, no comentarios genéricos
+- IMPORTANTE: Escribe el 'reasoning' y 'key_factors' completamente en ESPAÑOL
 """
 
         return prompt
@@ -242,9 +243,9 @@ Guidelines:
             confidence=0.5,
             lambda_adjustment_home=1.0,
             lambda_adjustment_away=1.0,
-            key_factors=["No AI analysis available"],
+            key_factors=["An\u00e1lisis de IA no disponible"],
             sentiment="NEUTRAL",
-            reasoning="Gemini not available or error occurred",
+            reasoning="Gemini no disponible o ocurri\u00f3 un error",
         )
 
     async def analyze_multiple_matches(

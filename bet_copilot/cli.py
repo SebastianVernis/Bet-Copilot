@@ -46,12 +46,14 @@ class BetCopilotCLI:
         self.ai_client = create_ai_client()  # Unified AI with fallback
         self.soccer_predictor = SoccerPredictor()
         self.kelly = KellyCriterion()
+        
+        # MatchAnalyzer creates its own Gemini and Blackbox clients for collaborative analysis
         self.match_analyzer = MatchAnalyzer(
-            self.odds_client,
-            self.football_client,
-            self.ai_client,
-            self.soccer_predictor,
-            self.kelly,
+            odds_client=self.odds_client,
+            football_client=self.football_client,
+            soccer_predictor=self.soccer_predictor,
+            kelly=self.kelly,
+            use_collaborative_analysis=True,
         )
 
         # Estado

@@ -136,9 +136,15 @@ class CollaborativeAnalyzer:
             if isinstance(gemini_analysis, Exception):
                 logger.error(f"Gemini analysis failed: {str(gemini_analysis)}")
                 gemini_analysis = None
+            elif self._is_neutral_error_analysis(gemini_analysis):
+                logger.warning("Gemini returned error/neutral analysis, treating as failure")
+                gemini_analysis = None
             
             if isinstance(blackbox_analysis, Exception):
                 logger.error(f"Blackbox analysis failed: {str(blackbox_analysis)}")
+                blackbox_analysis = None
+            elif self._is_neutral_error_analysis(blackbox_analysis):
+                logger.warning("Blackbox returned error/neutral analysis, treating as failure")
                 blackbox_analysis = None
             
             # If both failed, return neutral
@@ -346,6 +352,50 @@ class CollaborativeAnalyzer:
             f"Statistical perspective: {blackbox_reasoning}"
         )
     
+    def _is_neutral_error_analysis(self, analysis: ContextualAnalysis) -> bool:
+        """
+        Check if analysis is a neutral error response (not a real analysis).
+        
+        Neutral error indicators:
+        - Confidence exactly 0.5
+        - Both adjustments exactly 1.0
+        - Generic error messages in reasoning or key_factors
+        """
+        error_keywords = [
+            # English
+            "not available",
+            "error occurred",
+            "unavailable",
+            "failed",
+            "no ai analysis",
+            # Spanish
+            "no disponible",
+            "ocurri\u00f3 un error",
+            "no se pudo completar",
+            "fall\u00f3",
+            "sin an\u00e1lisis",
+        ]
+        
+        # Check for exact neutral values
+        is_neutral_values = (
+            analysis.confidence == 0.5 and
+            analysis.lambda_adjustment_home == 1.0 and
+            analysis.lambda_adjustment_away == 1.0
+        )
+        
+        if not is_neutral_values:
+            return False
+        
+        # Check for error keywords in reasoning or factors
+        reasoning_lower = analysis.reasoning.lower()
+        factors_lower = " ".join(analysis.key_factors).lower()
+        
+        for keyword in error_keywords:
+            if keyword in reasoning_lower or keyword in factors_lower:
+                return True
+        
+        return False
+    
     def _neutral_analysis(self, home_team: str, away_team: str) -> ContextualAnalysis:
         """Return neutral analysis when collaboration fails."""
         return ContextualAnalysis(
@@ -354,9 +404,9 @@ class CollaborativeAnalyzer:
             confidence=0.5,
             lambda_adjustment_home=1.0,
             lambda_adjustment_away=1.0,
-            key_factors=["Collaborative analysis unavailable"],
+            key_factors=["Análisis colaborativo no disponible"],
             sentiment="NEUTRAL",
-            reasoning="Unable to complete AI analysis"
+            reasoning="No se pudo completar el análisis de IA"
         )
     
     async def close(self):
