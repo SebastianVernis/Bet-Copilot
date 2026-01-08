@@ -128,19 +128,27 @@ class CollaborativeAnalyzer:
                 h2h_results, additional_context
             )
             
-            gemini_analysis, blackbox_analysis = await asyncio.gather(
-                gemini_task, blackbox_task, return_exceptions=True
-            )
+            try:
+                gemini_analysis, blackbox_analysis = await asyncio.gather(
+                    gemini_task, blackbox_task, return_exceptions=True
+                )
+            except asyncio.CancelledError:
+                logger.info("Collaborative analysis cancelled by user")
+                raise
             
             # Handle exceptions
-            if isinstance(gemini_analysis, Exception):
+            if isinstance(gemini_analysis, (Exception, asyncio.CancelledError)):
+                if isinstance(gemini_analysis, asyncio.CancelledError):
+                    raise
                 logger.error(f"Gemini analysis failed: {str(gemini_analysis)}")
                 gemini_analysis = None
             elif self._is_neutral_error_analysis(gemini_analysis):
                 logger.warning("Gemini returned error/neutral analysis, treating as failure")
                 gemini_analysis = None
             
-            if isinstance(blackbox_analysis, Exception):
+            if isinstance(blackbox_analysis, (Exception, asyncio.CancelledError)):
+                if isinstance(blackbox_analysis, asyncio.CancelledError):
+                    raise
                 logger.error(f"Blackbox analysis failed: {str(blackbox_analysis)}")
                 blackbox_analysis = None
             elif self._is_neutral_error_analysis(blackbox_analysis):

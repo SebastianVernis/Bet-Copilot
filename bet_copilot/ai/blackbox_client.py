@@ -167,6 +167,9 @@ class BlackboxClient:
                     logger.error(f"Blackbox API error {response.status}: {error_text[:200]}")
                     raise Exception(f"API returned status {response.status}")
         
+        except asyncio.CancelledError:
+            logger.info("Blackbox request cancelled by user")
+            raise
         except asyncio.TimeoutError:
             logger.error("Blackbox API timeout (30s)")
             raise

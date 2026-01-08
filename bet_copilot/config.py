@@ -6,6 +6,16 @@ Loads from environment variables.
 import os
 from pathlib import Path
 
+# Load .env file
+try:
+    from dotenv import load_dotenv
+    # Load from project root
+    env_path = Path(__file__).parent.parent / ".env"
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    # python-dotenv not installed, use system env vars only
+    pass
+
 # Base paths
 BASE_DIR = Path(__file__).parent.parent
 DB_PATH = BASE_DIR / "bet_copilot.db"

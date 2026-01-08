@@ -19,7 +19,7 @@ class TestGeminiClient:
     def test_initialization(self):
         """Test client initialization."""
         assert self.client.api_key == "test_key"
-        assert self.client.model_name == "gemini-2.0-flash-exp"
+        assert self.client.model_name == "gemini-2.5-flash-lite"
 
     def test_is_available(self):
         """Test availability check."""

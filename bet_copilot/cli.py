@@ -273,13 +273,17 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
         from rich.spinner import Spinner
         from rich.live import Live
 
-        with self.console.status(
-            f"[bold cyan]Obteniendo datos de API-Football...", spinner="dots"
-        ):
-            # Análisis completo con MatchAnalyzer
-            analysis = await self.match_analyzer.analyze_from_odds_event(
-                event_found, league_id=39, season=2024
-            )
+        try:
+            with self.console.status(
+                f"[bold cyan]Obteniendo datos de API-Football...", spinner="dots"
+            ):
+                # Análisis completo con MatchAnalyzer
+                analysis = await self.match_analyzer.analyze_from_odds_event(
+                    event_found, league_id=39, season=2024
+                )
+        except asyncio.CancelledError:
+            self.console.print("\n[yellow]Análisis cancelado por el usuario[/yellow]\n")
+            return
 
         # Mostrar información del partido
         self.console.print(f"[bold]╔═══ {analysis.home_team} vs {analysis.away_team} ═══╗[/bold]", style=NEON_PURPLE)
