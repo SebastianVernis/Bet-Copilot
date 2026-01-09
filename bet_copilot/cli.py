@@ -53,7 +53,6 @@ class BetCopilotCLI:
             football_client=self.football_client,
             soccer_predictor=self.soccer_predictor,
             kelly=self.kelly,
-            use_collaborative_analysis=True,
         )
 
         # Estado
