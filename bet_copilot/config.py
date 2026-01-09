@@ -23,12 +23,21 @@ DB_PATH = BASE_DIR / "bet_copilot.db"
 # API Keys
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 API_FOOTBALL_KEY = os.getenv("API_FOOTBALL_KEY", "")
+FALLBACK_FOOTBALL_API_KEY = os.getenv("FALLBACK_FOOTBALL_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 BLACKBOX_API_KEY = os.getenv("BLACKBOX_API_KEY", "")
+
+# Alternative Data Sources
+THESPORTSDB_API_KEY = os.getenv("THESPORTSDB_API_KEY", "")
+SPORTSDATA_API_KEY = os.getenv("SPORTSDATA_API_KEY", "")
+FOOTBALLDATA_API_KEY = os.getenv("FOOTBALLDATA_API_KEY", "")
 
 # API URLs
 ODDS_API_BASE_URL = "https://api.the-odds-api.com/v4"
 API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
+THESPORTSDB_BASE_URL = "https://www.thesportsdb.com/api/v1/json"
+FOOTBALLDATA_BASE_URL = "https://api.football-data.org/v4"
+SPORTSDATA_BASE_URL = "https://api.sportsdata.io/v4/soccer/scores/json"
 
 # Circuit Breaker Settings
 CIRCUIT_BREAKER_TIMEOUT = 60  # seconds

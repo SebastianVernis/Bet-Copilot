@@ -17,6 +17,7 @@ from bet_copilot.api.football_client import (
     PlayerStats,
     TeamLineup,
 )
+from bet_copilot.api.multi_source_client import MultiSourceFootballClient
 from bet_copilot.ai.gemini_client import GeminiClient
 from bet_copilot.ai.blackbox_client import BlackboxClient
 from bet_copilot.ai.collaborative_analyzer import CollaborativeAnalyzer, CollaborativeAnalysis
@@ -183,6 +184,7 @@ class MatchAnalyzer:
         self,
         odds_client: Optional[OddsAPIClient] = None,
         football_client: Optional[FootballAPIClient] = None,
+        multi_source_client: Optional[MultiSourceFootballClient] = None,
         gemini_client: Optional[GeminiClient] = None,
         blackbox_client: Optional[BlackboxClient] = None,
         soccer_predictor: Optional[SoccerPredictor] = None,
@@ -193,6 +195,7 @@ class MatchAnalyzer:
     ):
         self.odds_client = odds_client or OddsAPIClient()
         self.football_client = football_client or FootballAPIClient()
+        self.multi_source = multi_source_client or MultiSourceFootballClient()
         self.gemini_client = gemini_client or GeminiClient()
         self.blackbox_client = blackbox_client or BlackboxClient()
         self.soccer_predictor = soccer_predictor or SoccerPredictor()
@@ -206,6 +209,8 @@ class MatchAnalyzer:
             gemini_client=self.gemini_client,
             blackbox_client=self.blackbox_client
         )
+        
+        logger.info("MatchAnalyzer initialized with multi-source support")
 
     async def analyze_match(
         self,
@@ -215,6 +220,7 @@ class MatchAnalyzer:
         season: int = 2024,
         include_players: bool = True,
         include_ai_analysis: bool = True,
+        fetch_odds: bool = True,
     ) -> EnhancedMatchAnalysis:
         """
         Análisis completo de un partido.
@@ -226,6 +232,7 @@ class MatchAnalyzer:
             season: Temporada
             include_players: Incluir análisis de jugadores
             include_ai_analysis: Incluir análisis de Gemini
+            fetch_odds: Obtener cuotas de Odds API
             
         Returns:
             EnhancedMatchAnalysis con todos los datos
@@ -239,34 +246,37 @@ class MatchAnalyzer:
             commence_time=datetime.now(),
         )
 
-        # 1. Buscar IDs de equipos
-        home_team_id = await self.football_client.search_team_by_name(home_team_name)
-        away_team_id = await self.football_client.search_team_by_name(away_team_name)
+        # 1. Buscar IDs de equipos usando multi-source
+        logger.info("🔍 Searching teams across multiple sources...")
+        home_team_id, home_team_full_name, home_source = await self.multi_source.search_team(
+            home_team_name, league_id
+        )
+        away_team_id, away_team_full_name, away_source = await self.multi_source.search_team(
+            away_team_name, league_id
+        )
 
         if not home_team_id or not away_team_id:
-            logger.warning("No se pudieron encontrar los equipos en API-Football")
+            logger.error("❌ Could not find teams in any source")
             return analysis
+        
+        logger.info(f"✓ {home_team_full_name} found in {home_source}")
+        logger.info(f"✓ {away_team_full_name} found in {away_source}")
 
-        # 2. Obtener estadísticas de equipos (en paralelo)
-        home_stats_task = self.football_client.get_team_stats(
-            home_team_id, season, league_id
-        )
-        away_stats_task = self.football_client.get_team_stats(
-            away_team_id, season, league_id
-        )
-        h2h_task = self.football_client.get_h2h_stats(home_team_id, away_team_id)
-
+        # 2. Obtener estadísticas de equipos usando multi-source
+        logger.info("📊 Fetching team statistics...")
         try:
-            home_stats, away_stats, h2h_stats = await asyncio.gather(
-                home_stats_task, away_stats_task, h2h_task, return_exceptions=True
+            home_stats = await self.multi_source.get_team_stats(
+                home_team_id, home_team_full_name, home_source, league_id, season
             )
-
-            if not isinstance(home_stats, Exception):
-                analysis.home_stats = home_stats
-            if not isinstance(away_stats, Exception):
-                analysis.away_stats = away_stats
-            if not isinstance(h2h_stats, Exception):
-                analysis.h2h_stats = h2h_stats
+            away_stats = await self.multi_source.get_team_stats(
+                away_team_id, away_team_full_name, away_source, league_id, season
+            )
+            
+            analysis.home_stats = home_stats
+            analysis.away_stats = away_stats
+            
+            logger.info(f"✓ Home stats: {home_stats.wins}W-{home_stats.draws}D-{home_stats.losses}L")
+            logger.info(f"✓ Away stats: {away_stats.wins}W-{away_stats.draws}D-{away_stats.losses}L")
 
         except Exception as e:
             logger.error(f"Error obteniendo estadísticas: {str(e)}")
@@ -473,6 +483,106 @@ class MatchAnalyzer:
                     analysis.prediction.draw_prob, analysis.draw_odds
                 )
 
+        # 7b. Obtener odds si se solicita
+        if fetch_odds and self.odds_client:
+            try:
+                logger.info(f"Fetching odds for {home_team_name} vs {away_team_name}...")
+                
+                # Map league_id to odds API sport key
+                sport_key_map = {
+                    39: "soccer_epl",  # Premier League
+                    140: "soccer_spain_la_liga",  # La Liga
+                    78: "soccer_germany_bundesliga",  # Bundesliga
+                    135: "soccer_italy_serie_a",  # Serie A
+                    61: "soccer_france_ligue_one",  # Ligue 1
+                    # Add more leagues as needed
+                }
+                
+                sport_key = sport_key_map.get(league_id, "soccer_epl")
+                
+                # Get odds from The Odds API
+                odds_events = await self.odds_client.get_odds(
+                    sport_key=sport_key,
+                    regions="us,uk,eu",  # Multiple regions for better coverage
+                    markets="h2h",  # Head-to-head market
+                    odds_format="decimal"
+                )
+                
+                # Find match by team names (fuzzy matching)
+                for event in odds_events:
+                    home_match = (
+                        home_team_name.lower() in event.home_team.lower() or
+                        event.home_team.lower() in home_team_name.lower()
+                    )
+                    away_match = (
+                        away_team_name.lower() in event.away_team.lower() or
+                        event.away_team.lower() in away_team_name.lower()
+                    )
+                    
+                    if home_match and away_match:
+                        logger.info(f"✓ Found matching event: {event.home_team} vs {event.away_team}")
+                        
+                        # Get best odds from all bookmakers
+                        best_home = 0.0
+                        best_draw = 0.0
+                        best_away = 0.0
+                        best_bookmaker = ""
+                        
+                        for bookmaker in event.bookmakers:
+                            for market in bookmaker.markets:
+                                if market.key == "h2h":
+                                    outcomes = market.outcomes
+                                    home_odd = outcomes.get(event.home_team, 0.0)
+                                    draw_odd = outcomes.get("Draw", 0.0)
+                                    away_odd = outcomes.get(event.away_team, 0.0)
+                                    
+                                    # Take best odds (highest)
+                                    if home_odd > best_home:
+                                        best_home = home_odd
+                                    if draw_odd > best_draw:
+                                        best_draw = draw_odd
+                                    if away_odd > best_away:
+                                        best_away = away_odd
+                                        best_bookmaker = bookmaker.title
+                        
+                        if best_home > 0:
+                            analysis.home_odds = best_home
+                            analysis.draw_odds = best_draw if best_draw > 0 else None
+                            analysis.away_odds = best_away
+                            analysis.bookmaker = f"Best Odds (via The Odds API)"
+                            
+                            logger.info(
+                                f"✓ Real odds from {best_bookmaker}: "
+                                f"H={best_home:.2f} D={best_draw:.2f} A={best_away:.2f}"
+                            )
+                        break
+                
+                if not analysis.home_odds:
+                    logger.info("No matching odds found in The Odds API")
+                            
+            except Exception as e:
+                logger.warning(f"Error fetching odds: {str(e)}")
+        
+        # 7c. Calcular Kelly con odds
+        if analysis.prediction:
+            if analysis.home_odds:
+                analysis.kelly_home = self.kelly.calculate(
+                    analysis.prediction.home_win_prob, analysis.home_odds
+                )
+                logger.info(f"Kelly Home: EV={analysis.kelly_home.ev:+.1%}, Value={analysis.kelly_home.is_value_bet}")
+                
+            if analysis.away_odds:
+                analysis.kelly_away = self.kelly.calculate(
+                    analysis.prediction.away_win_prob, analysis.away_odds
+                )
+                logger.info(f"Kelly Away: EV={analysis.kelly_away.ev:+.1%}, Value={analysis.kelly_away.is_value_bet}")
+                
+            if analysis.draw_odds:
+                analysis.kelly_draw = self.kelly.calculate(
+                    analysis.prediction.draw_prob, analysis.draw_odds
+                )
+                logger.info(f"Kelly Draw: EV={analysis.kelly_draw.ev:+.1%}, Value={analysis.kelly_draw.is_value_bet}")
+        
         # 8. Predicciones de mercados alternativos (si hay datos históricos)
         if analysis.home_stats and analysis.away_stats:
             try:
@@ -518,6 +628,33 @@ class MatchAnalyzer:
                 
             except Exception as e:
                 logger.warning(f"No se pudieron calcular mercados alternativos: {str(e)}")
+        
+        # 9. Asegurar que siempre hay odds (usar implícitas si no hay reales)
+        if analysis.prediction and not analysis.home_odds:
+            # Use fair odds WITH typical bookmaker margin
+            # This way EV will be negative unless AI provides strong adjustments
+            margin = 1.08  # 8% bookmaker margin (typical)
+            
+            analysis.home_odds = (1.0 / analysis.prediction.home_win_prob) / margin
+            analysis.draw_odds = (1.0 / analysis.prediction.draw_prob) / margin
+            analysis.away_odds = (1.0 / analysis.prediction.away_win_prob) / margin
+            analysis.bookmaker = "Estimated Odds"
+            
+            # Calculate Kelly with estimated odds
+            analysis.kelly_home = self.kelly.calculate(
+                analysis.prediction.home_win_prob, analysis.home_odds
+            )
+            analysis.kelly_draw = self.kelly.calculate(
+                analysis.prediction.draw_prob, analysis.draw_odds
+            )
+            analysis.kelly_away = self.kelly.calculate(
+                analysis.prediction.away_win_prob, analysis.away_odds
+            )
+            
+            logger.info(
+                f"Using estimated odds: H={analysis.home_odds:.2f} "
+                f"D={analysis.draw_odds:.2f} A={analysis.away_odds:.2f}"
+            )
 
         return analysis
     

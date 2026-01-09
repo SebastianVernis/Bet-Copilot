@@ -10,6 +10,18 @@ Comprehensive demo of all major features.
 python examples/DEMO.py
 ```
 
+### demo_textual_tui.py ⭐ NEW
+Interactive Textual TUI demo with instructions.
+```bash
+python examples/demo_textual_tui.py
+```
+**Features**:
+- Live dashboard with 5 widgets
+- Real-time market scanning
+- News feed auto-refresh
+- Keyboard shortcuts (r/a/n/m/q)
+- Full match analysis
+
 ## ⚽ Soccer Prediction Examples
 
 ### example_soccer_prediction.py

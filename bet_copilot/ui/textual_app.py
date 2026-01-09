@@ -20,6 +20,12 @@ from textual.reactive import reactive
 from textual.message import Message
 
 from bet_copilot.news import NewsScraper, NewsArticle
+from bet_copilot.services.match_analyzer import MatchAnalyzer
+from bet_copilot.api.odds_client import OddsAPIClient
+from bet_copilot.api.football_client import FootballAPIClient
+from bet_copilot.ai.gemini_client import GeminiClient
+from bet_copilot.ai.blackbox_client import BlackboxClient
+from bet_copilot.math_engine.alternative_markets import AlternativeMarketsPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +102,8 @@ class NewsWidget(Static):
         """Fetch news on startup."""
         await self.refresh_news()
         
-        # Auto-refresh every hour
-        self.set_interval(3600, self.refresh_news)
+        # Auto-refresh every 30 minutes
+        self.set_interval(1800, self.refresh_news)
     
     async def refresh_news(self) -> None:
         """Fetch latest news."""
@@ -105,47 +111,62 @@ class NewsWidget(Static):
         
         try:
             scraper = NewsScraper()
-            self.articles = await scraper.fetch_all_news(max_per_source=10)
+            articles = await scraper.fetch_all_news(max_per_source=10)
             await scraper.close()
+            
+            logger.info(f"Fetched {len(articles)} news articles")
+            self.articles = articles
+            
         except Exception as e:
             logger.error(f"Error fetching news: {str(e)}")
+            self.articles = []
         finally:
             self.loading = False
     
     def watch_articles(self, articles: List[NewsArticle]) -> None:
         """Update display when articles change."""
-        container = self.query_one("#news-list", ScrollableContainer)
-        container.remove_children()
+        try:
+            container = self.query_one("#news-list", ScrollableContainer)
+            container.remove_children()
+            
+            if self.loading:
+                container.mount(Label("🔄 Loading news..."))
+                return
+            
+            if not articles:
+                container.mount(Label("[dim]No news available[/dim]"))
+                return
+            
+            logger.info(f"Displaying {len(articles)} articles")
+            
+            for article in articles[:10]:
+                # Time ago
+                time_diff = (datetime.now() - article.published).total_seconds() / 3600
+                if time_diff < 1:
+                    time_str = f"{int(time_diff * 60)}m"
+                elif time_diff < 24:
+                    time_str = f"{int(time_diff)}h"
+                else:
+                    time_str = f"{int(time_diff / 24)}d"
+                
+                # Category emoji
+                emoji = {
+                    "injury": "🏥",
+                    "transfer": "🔄",
+                    "match_preview": "⚽",
+                    "general": "📋"
+                }.get(article.category, "📋")
+                
+                # Render article
+                article_text = (
+                    f"[dim]{time_str}[/dim] {emoji} {article.title[:50]}\n"
+                    f"[dim]{article.source}[/dim]"
+                )
+                
+                container.mount(Label(article_text))
         
-        if self.loading:
-            container.mount(Label("🔄 Loading news..."))
-            return
-        
-        for article in articles[:10]:
-            # Time ago
-            time_diff = (datetime.now() - article.published).total_seconds() / 3600
-            if time_diff < 1:
-                time_str = f"{int(time_diff * 60)}m"
-            elif time_diff < 24:
-                time_str = f"{int(time_diff)}h"
-            else:
-                time_str = f"{int(time_diff / 24)}d"
-            
-            # Category emoji
-            emoji = {
-                "injury": "🏥",
-                "transfer": "🔄",
-                "match_preview": "⚽",
-                "general": "📋"
-            }.get(article.category, "📋")
-            
-            # Render article
-            article_text = (
-                f"[dim]{time_str}[/dim] {emoji} {article.title[:50]}\n"
-                f"[dim]{article.source}[/dim]"
-            )
-            
-            container.mount(Label(article_text))
+        except Exception as e:
+            logger.error(f"Error updating news display: {str(e)}")
 
 
 class MarketWatchWidget(Static):
@@ -176,15 +197,72 @@ class MarketWatchWidget(Static):
         
         table.cursor_type = "row"  # Allow row selection
         
-        # Auto-refresh every 30s
-        self.set_interval(30, self.refresh_markets)
+        # Auto-refresh every 5 minutes
+        self.set_interval(300, self.refresh_markets)
+        
+        # Load initial data
+        asyncio.create_task(self.refresh_markets())
     
     async def refresh_markets(self) -> None:
-        """Fetch latest market data."""
+        """Fetch latest market opportunities from live odds."""
         try:
-            # TODO: Integrate with actual MatchAnalyzer
-            # For now, empty
+            app = self.app
+            if not hasattr(app, 'odds_client'):
+                return
+            
+            # Get top leagues matches
+            sports = await app.odds_client.get_sports()
+            if not sports:
+                return
+            
+            # Get soccer matches
+            soccer_key = next((s['key'] for s in sports if 'soccer' in s['key'].lower()), None)
+            if not soccer_key:
+                return
+            
+            odds = await app.odds_client.get_odds(sport=soccer_key, regions=['us'], markets=['h2h'])
+            
+            # Analyze top 5 matches
+            markets = []
+            for match in odds[:5]:
+                try:
+                    home_team = match.get('home_team', '')
+                    away_team = match.get('away_team', '')
+                    
+                    # Quick analysis
+                    analysis = await app.match_analyzer.analyze_match(
+                        home_team=home_team,
+                        away_team=away_team
+                    )
+                    
+                    if analysis:
+                        # Add value bets
+                        if analysis.kelly_home and analysis.kelly_home.is_value_bet:
+                            markets.append({
+                                "id": f"{home_team}-home",
+                                "match": f"{home_team} vs {away_team}",
+                                "market_type": "Home Win",
+                                "ev": analysis.kelly_home.ev,
+                                "odds": analysis.kelly_home.odds,
+                                "confidence": analysis.ai_analysis.confidence if analysis.ai_analysis else 0.5
+                            })
+                        
+                        if analysis.kelly_away and analysis.kelly_away.is_value_bet:
+                            markets.append({
+                                "id": f"{away_team}-away",
+                                "match": f"{home_team} vs {away_team}",
+                                "market_type": "Away Win",
+                                "ev": analysis.kelly_away.ev,
+                                "odds": analysis.kelly_away.odds,
+                                "confidence": analysis.ai_analysis.confidence if analysis.ai_analysis else 0.5
+                            })
+                except Exception as e:
+                    logger.error(f"Error analyzing {home_team} vs {away_team}: {str(e)}")
+                    continue
+            
+            self.markets = markets
             self.last_update = datetime.now().strftime("%H:%M:%S")
+            
         except Exception as e:
             logger.error(f"Error refreshing markets: {str(e)}")
     
@@ -193,20 +271,22 @@ class MarketWatchWidget(Static):
         table = self.query_one(DataTable)
         table.clear()
         
+        if not markets:
+            return
+        
         for market in markets:
-            ev_str = f"{market.get('ev', 0):+.1%}"
+            ev = market.get('ev', 0)
+            ev_str = f"{ev:+.1%}"
             
-            # Color based on EV
-            if market.get('ev', 0) > 0.10:
-                style = "bold green"
-            elif market.get('ev', 0) > 0.05:
-                style = "yellow"
-            else:
-                style = "dim"
+            # Mark value bets with emoji
+            is_value = market.get('is_value', False)
+            market_type = market.get('market_type', '')
+            if is_value:
+                market_type = f"✅ {market_type}"
             
             table.add_row(
                 market.get('match', ''),
-                market.get('market_type', ''),
+                market_type,
                 ev_str,
                 f"{market.get('odds', 0):.2f}",
                 "⭐" * int(market.get('confidence', 0) * 5),
@@ -234,27 +314,97 @@ class AlternativeMarketsWidget(Static):
         yield Label("📐 Alternative Markets")
         
         with Horizontal():
-            yield Static("🏁 Corners: --", id="corners-summary")
-            yield Static("🟨 Cards: --", id="cards-summary")
-            yield Static("🎯 Shots: --", id="shots-summary")
+            yield Static("🏁 Corners: [dim]--[/dim]", id="corners-summary")
+            yield Static("🟨 Cards: [dim]--[/dim]", id="cards-summary")
+            yield Static("🎯 Shots: [dim]--[/dim]", id="shots-summary")
     
     def watch_corners_data(self, data) -> None:
         """Update corners display."""
-        if data:
-            widget = self.query_one("#corners-summary", Static)
-            widget.update(f"🏁 Corners: {data.get('expected', 0):.1f}")
+        widget = self.query_one("#corners-summary", Static)
+        if data and data.get('expected'):
+            expected = data.get('expected', 0)
+            widget.update(f"🏁 Corners: [bold cyan]{expected:.1f}[/bold cyan]")
+        else:
+            widget.update("🏁 Corners: [dim]N/A[/dim]")
     
     def watch_cards_data(self, data) -> None:
         """Update cards display."""
-        if data:
-            widget = self.query_one("#cards-summary", Static)
-            widget.update(f"🟨 Cards: {data.get('expected', 0):.1f}")
+        widget = self.query_one("#cards-summary", Static)
+        if data and data.get('expected'):
+            expected = data.get('expected', 0)
+            widget.update(f"🟨 Cards: [bold yellow]{expected:.1f}[/bold yellow]")
+        else:
+            widget.update("🟨 Cards: [dim]N/A[/dim]")
     
     def watch_shots_data(self, data) -> None:
         """Update shots display."""
-        if data:
-            widget = self.query_one("#shots-summary", Static)
-            widget.update(f"🎯 Shots: {data.get('expected', 0):.1f}")
+        widget = self.query_one("#shots-summary", Static)
+        if data and data.get('expected'):
+            expected = data.get('expected', 0)
+            widget.update(f"🎯 Shots: [bold green]{expected:.1f}[/bold green]")
+        else:
+            widget.update("🎯 Shots: [dim]N/A[/dim]")
+
+
+class PredictionWidget(Static):
+    """
+    Match prediction display widget.
+    
+    Shows Poisson prediction, probabilities, and most likely score.
+    """
+    
+    prediction_data = reactive(None)
+    
+    def compose(self) -> ComposeResult:
+        yield Label("⚽ Match Prediction")
+        yield Static(
+            "[dim]No match analyzed yet\\n\\nType a match below:\\n'Arsenal vs Chelsea'\\n\\nThen press Enter[/dim]",
+            id="prediction-content"
+        )
+    
+    def watch_prediction_data(self, data) -> None:
+        """Update prediction display."""
+        content = self.query_one("#prediction-content", Static)
+        
+        if not data:
+            content.update("[dim]No prediction available[/dim]")
+            return
+        
+        pred = data.get('prediction')
+        ai = data.get('ai_analysis')
+        collab = data.get('collaborative_analysis')
+        
+        if not pred:
+            content.update("[dim]No prediction data[/dim]")
+            return
+        
+        # Build display
+        display = f"""[bold]{data.get('home_team', '')}[/bold] vs [bold]{data.get('away_team', '')}[/bold]
+
+Expected Goals:
+  Home: [cyan]{pred.home_goals:.2f}[/cyan]  |  Away: [cyan]{pred.away_goals:.2f}[/cyan]
+
+Win Probabilities:
+  Home: [green]{pred.home_win_prob:.1%}[/green]
+  Draw: [yellow]{pred.draw_prob:.1%}[/yellow]
+  Away: [red]{pred.away_win_prob:.1%}[/red]
+
+Most Likely: [bold]{pred.most_likely_score}[/bold]
+"""
+        
+        # Show collaborative analysis info if available
+        if collab:
+            display += f"\n[bold]🤝 Collaborative AI:[/bold] Agreement {collab.agreement_score:.0%}"
+            display += f"\n[bold]AI Confidence:[/bold] {'⭐' * int(ai.confidence * 5)} ({ai.confidence:.0%})"
+        elif ai:
+            display += f"\n[bold]AI Confidence:[/bold] {'⭐' * int(ai.confidence * 5)} ({ai.confidence:.0%})"
+        
+        if ai and ai.key_factors:
+            display += f"\n\n[bold]Key Factors:[/bold]\n"
+            for factor in ai.key_factors[:3]:
+                display += f"  • {factor}\n"
+        
+        content.update(display)
 
 
 class BetCopilotApp(App):
@@ -270,7 +420,7 @@ class BetCopilotApp(App):
     }
     
     #top-row {
-        height: 8;
+        height: 10;
         margin: 1;
     }
     
@@ -283,6 +433,24 @@ class BetCopilotApp(App):
     #news-feed {
         width: 1fr;
         border: solid cyan;
+        padding: 1;
+        overflow-y: auto;
+    }
+    
+    #middle-row {
+        height: 1fr;
+        margin: 1;
+    }
+    
+    #prediction {
+        width: 2fr;
+        border: solid cyan;
+        padding: 1;
+    }
+    
+    #market-watch {
+        width: 3fr;
+        border: solid yellow;
         padding: 1;
     }
     
@@ -340,6 +508,16 @@ class BetCopilotApp(App):
     TITLE = "BET-COPILOT v0.5 - Multi-AI Analysis Dashboard"
     SUB_TITLE = "Collaborative Analysis | Alternative Markets | Live News"
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Initialize services
+        self.match_analyzer = MatchAnalyzer()
+        self.odds_client = OddsAPIClient()
+        self.football_client = FootballAPIClient()
+        self.gemini_client = GeminiClient()
+        self.blackbox_client = BlackboxClient()
+        self.alt_markets = AlternativeMarketsPredictor()
+    
     def compose(self) -> ComposeResult:
         """Create layout."""
         yield Header()
@@ -349,8 +527,10 @@ class BetCopilotApp(App):
             yield APIHealthWidget(id="api-health")
             yield NewsWidget(id="news-feed")
         
-        # Main area: Market Watch
-        yield MarketWatchWidget(id="market-watch")
+        # Middle row: Prediction + Market Watch
+        with Horizontal(id="middle-row"):
+            yield PredictionWidget(id="prediction")
+            yield MarketWatchWidget(id="market-watch")
         
         # Alternative markets summary
         yield AlternativeMarketsWidget(id="alternative-markets")
@@ -371,14 +551,27 @@ class BetCopilotApp(App):
         self.title = self.TITLE
         self.sub_title = self.SUB_TITLE
         
-        # Initialize API health
-        api_widget = self.query_one(APIHealthWidget)
-        api_widget.odds_status = "healthy"
-        api_widget.football_status = "healthy"
-        api_widget.gemini_status = "healthy"
-        api_widget.blackbox_status = "healthy"
+        # Check API health
+        await self.update_api_health()
+        
+        # Show welcome notification
+        self.notify("🚀 Bet-Copilot TUI started! Type a match or press 'r' to scan markets.", severity="information")
         
         logger.info("Textual app mounted")
+    
+    async def update_api_health(self) -> None:
+        """Update API health status."""
+        api_widget = self.query_one(APIHealthWidget)
+        
+        # Check each API
+        api_widget.odds_status = "healthy" if self.odds_client else "unknown"
+        api_widget.football_status = "healthy" if self.football_client else "unknown"
+        api_widget.gemini_status = "healthy" if self.gemini_client.is_available() else "down"
+        api_widget.blackbox_status = "healthy" if self.blackbox_client.is_available() else "down"
+        
+        # Get request counts from cache/circuit breaker
+        api_widget.odds_requests = 0  # TODO: Get from circuit breaker
+        api_widget.football_requests = 0  # TODO: Get from circuit breaker
     
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button clicks."""
@@ -419,47 +612,113 @@ class BetCopilotApp(App):
     
     async def analyze_match(self, home_team: str, away_team: str) -> None:
         """
-        Analyze a match and update dashboard.
-        
-        TODO: Integrate with MatchAnalyzer
+        Analyze a match and update dashboard with real data.
         """
-        self.notify(f"Analyzing: {home_team} vs {away_team}")
+        self.notify(f"🔍 Analyzing: {home_team} vs {away_team}")
         
-        # Simulate analysis
-        await asyncio.sleep(2)
-        
-        # Update market watch
-        market_widget = self.query_one(MarketWatchWidget)
-        market_widget.markets = [
-            {
-                "id": "1",
-                "match": f"{home_team} vs {away_team}",
-                "market_type": "Home Win",
-                "ev": 0.125,
-                "odds": 2.10,
-                "confidence": 0.8
-            },
-            {
-                "id": "2",
-                "match": f"{home_team} vs {away_team}",
-                "market_type": "Corners O10.5",
-                "ev": 0.152,
-                "odds": 1.95,
-                "confidence": 0.85
+        try:
+            # Run full analysis
+            analysis = await self.match_analyzer.analyze_match(
+                home_team=home_team,
+                away_team=away_team
+            )
+            
+            if not analysis:
+                self.notify("❌ No data available for this match", severity="error")
+                return
+            
+            # Update prediction widget
+            pred_widget = self.query_one(PredictionWidget)
+            pred_widget.prediction_data = {
+                'home_team': home_team,
+                'away_team': away_team,
+                'prediction': analysis.prediction,
+                'ai_analysis': analysis.ai_analysis,
+                'collaborative_analysis': analysis.collaborative_analysis
             }
-        ]
+            
+            # Update market watch with ALL Kelly recommendations
+            markets = []
+            
+            if analysis.kelly_home:
+                markets.append({
+                    "id": "home",
+                    "match": f"{home_team} vs {away_team}",
+                    "market_type": "Home Win",
+                    "ev": analysis.kelly_home.ev,
+                    "odds": analysis.kelly_home.odds,
+                    "confidence": analysis.ai_analysis.confidence if analysis.ai_analysis else 0.5,
+                    "is_value": analysis.kelly_home.is_value_bet
+                })
+            
+            if analysis.kelly_draw:
+                markets.append({
+                    "id": "draw",
+                    "match": f"{home_team} vs {away_team}",
+                    "market_type": "Draw",
+                    "ev": analysis.kelly_draw.ev,
+                    "odds": analysis.kelly_draw.odds,
+                    "confidence": analysis.ai_analysis.confidence if analysis.ai_analysis else 0.5,
+                    "is_value": analysis.kelly_draw.is_value_bet
+                })
+            
+            if analysis.kelly_away:
+                markets.append({
+                    "id": "away",
+                    "match": f"{home_team} vs {away_team}",
+                    "market_type": "Away Win",
+                    "ev": analysis.kelly_away.ev,
+                    "odds": analysis.kelly_away.odds,
+                    "confidence": analysis.ai_analysis.confidence if analysis.ai_analysis else 0.5,
+                    "is_value": analysis.kelly_away.is_value_bet
+                })
+            
+            market_widget = self.query_one(MarketWatchWidget)
+            market_widget.markets = markets
+            
+            # Update alternative markets
+            alt_widget = self.query_one(AlternativeMarketsWidget)
+            
+            if analysis.corners_prediction:
+                alt_widget.corners_data = {"expected": analysis.corners_prediction.total_expected}
+            else:
+                alt_widget.corners_data = {"expected": None}
+            
+            if analysis.cards_prediction:
+                alt_widget.cards_data = {"expected": analysis.cards_prediction.total_expected}
+            else:
+                alt_widget.cards_data = {"expected": None}
+            
+            if analysis.shots_prediction:
+                alt_widget.shots_data = {"expected": analysis.shots_prediction.total_expected}
+            else:
+                alt_widget.shots_data = {"expected": None}
+            
+            # Show summary with AI analysis context
+            value_bets = [m for m in markets if m.get('is_value')]
+            if value_bets:
+                self.notify(f"✅ Found {len(value_bets)} value bet(s)! (Total: {len(markets)} markets)", severity="information")
+            else:
+                self.notify(f"ℹ️ No value bets found - Using estimated odds (Total: {len(markets)} markets analyzed)", severity="warning")
+            
+            # Log AI analysis summary
+            if analysis.ai_analysis:
+                logger.info(f"AI Analysis: {analysis.ai_analysis.reasoning[:100]}...")
+            
+            # Log alternative markets availability
+            if not analysis.corners_prediction:
+                logger.info("Alternative markets not available (API-Football Free plan limitation)")
         
-        # Update alternative markets
-        alt_widget = self.query_one(AlternativeMarketsWidget)
-        alt_widget.corners_data = {"expected": 11.8}
-        alt_widget.cards_data = {"expected": 4.6}
-        alt_widget.shots_data = {"expected": 26.3}
-        
-        self.notify(f"✓ Analysis complete!", severity="information")
+        except Exception as e:
+            logger.error(f"Error analyzing match: {str(e)}")
+            self.notify(f"❌ Error: {str(e)}", severity="error")
     
     async def action_refresh_all(self) -> None:
         """Refresh all data."""
-        self.notify("Refreshing all data...")
+        self.notify("🔄 Refreshing all data...")
+        
+        # Update API health
+        await self.update_api_health()
         
         # Refresh news
         news_widget = self.query_one(NewsWidget)
@@ -469,7 +728,22 @@ class BetCopilotApp(App):
         market_widget = self.query_one(MarketWatchWidget)
         await market_widget.refresh_markets()
         
-        self.notify("✓ Refresh complete!", severity="information")
+        self.notify("✅ Refresh complete!", severity="information")
+    
+    async def on_unmount(self) -> None:
+        """Cleanup on exit."""
+        try:
+            if hasattr(self, 'match_analyzer'):
+                await self.match_analyzer.close()
+            if hasattr(self, 'odds_client'):
+                await self.odds_client.close()
+            if hasattr(self, 'football_client'):
+                await self.football_client.close()
+            if hasattr(self, 'blackbox_client'):
+                await self.blackbox_client.close()
+            logger.info("App cleanup complete")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
     
     async def action_analyze(self) -> None:
         """Trigger analysis from button."""
