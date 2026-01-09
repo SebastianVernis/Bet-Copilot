@@ -18,9 +18,7 @@ from bet_copilot.api.football_client import (
     TeamLineup,
 )
 from bet_copilot.api.multi_source_client import MultiSourceFootballClient
-from bet_copilot.ai.gemini_client import GeminiClient
 from bet_copilot.ai.blackbox_client import BlackboxClient
-from bet_copilot.ai.collaborative_analyzer import CollaborativeAnalyzer, CollaborativeAnalysis
 from bet_copilot.ai.types import ContextualAnalysis
 from bet_copilot.math_engine.soccer_predictor import SoccerPredictor
 from bet_copilot.math_engine.kelly import KellyCriterion, KellyRecommendation
@@ -76,9 +74,6 @@ class EnhancedMatchAnalysis:
     corners_prediction: Optional[AlternativeMarketPrediction] = None
     cards_prediction: Optional[AlternativeMarketPrediction] = None
     shots_prediction: Optional[AlternativeMarketPrediction] = None
-    
-    # Análisis colaborativo (si ambas IAs disponibles)
-    collaborative_analysis: Optional[CollaborativeAnalysis] = None
     
     # Noticias relevantes
     relevant_news: Optional[List[NewsArticle]] = None
@@ -175,7 +170,7 @@ class MatchAnalyzer:
     Combina:
     1. Odds API (cuotas en tiempo real)
     2. API-Football (stats, jugadores, H2H)
-    3. Gemini AI (contexto y sentimiento)
+    3. Blackbox AI (contexto y sentimiento)
     4. Motor Poisson (predicción matemática)
     5. Kelly Criterion (sizing óptimo)
     """
@@ -185,37 +180,27 @@ class MatchAnalyzer:
         odds_client: Optional[OddsAPIClient] = None,
         football_client: Optional[FootballAPIClient] = None,
         multi_source_client: Optional[MultiSourceFootballClient] = None,
-        gemini_client: Optional[GeminiClient] = None,
         blackbox_client: Optional[BlackboxClient] = None,
         soccer_predictor: Optional[SoccerPredictor] = None,
         kelly: Optional[KellyCriterion] = None,
         alternative_markets: Optional[AlternativeMarketsPredictor] = None,
         news_scraper: Optional[NewsScraper] = None,
-        use_collaborative_analysis: bool = True,
     ):
         self.odds_client = odds_client or OddsAPIClient()
         self.football_client = football_client or FootballAPIClient()
         self.multi_source = multi_source_client or MultiSourceFootballClient()
-        self.gemini_client = gemini_client or GeminiClient()
         self.blackbox_client = blackbox_client or BlackboxClient()
         self.soccer_predictor = soccer_predictor or SoccerPredictor()
         self.kelly = kelly or KellyCriterion()
         self.alternative_markets = alternative_markets or AlternativeMarketsPredictor()
         self.news_scraper = news_scraper or NewsScraper()
-        self.use_collaborative = use_collaborative_analysis
         
-        # Initialize collaborative analyzer
-        self.collaborative_analyzer = CollaborativeAnalyzer(
-            gemini_client=self.gemini_client,
-            blackbox_client=self.blackbox_client
-        )
-        
-        logger.info("MatchAnalyzer initialized with multi-source support")
+        logger.info("MatchAnalyzer initialized with Blackbox AI support")
 
     async def analyze_match(
         self,
-        home_team_name: str,
-        away_team_name: str,
+        home_team: str,
+        away_team: str,
         league_id: int = 39,  # Premier League default
         season: int = 2024,
         include_players: bool = True,
@@ -226,8 +211,8 @@ class MatchAnalyzer:
         Análisis completo de un partido.
         
         Args:
-            home_team_name: Nombre del equipo local
-            away_team_name: Nombre del equipo visitante
+            home_team: Nombre del equipo local
+            away_team: Nombre del equipo visitante
             league_id: ID de la liga
             season: Temporada
             include_players: Incluir análisis de jugadores
@@ -237,11 +222,11 @@ class MatchAnalyzer:
         Returns:
             EnhancedMatchAnalysis con todos los datos
         """
-        logger.info(f"Analizando: {home_team_name} vs {away_team_name}")
+        logger.info(f"Analizando: {home_team} vs {away_team}")
 
         analysis = EnhancedMatchAnalysis(
-            home_team=home_team_name,
-            away_team=away_team_name,
+            home_team=home_team,
+            away_team=away_team,
             league=f"League {league_id}",
             commence_time=datetime.now(),
         )
@@ -249,10 +234,10 @@ class MatchAnalyzer:
         # 1. Buscar IDs de equipos usando multi-source
         logger.info("🔍 Searching teams across multiple sources...")
         home_team_id, home_team_full_name, home_source = await self.multi_source.search_team(
-            home_team_name, league_id
+            home_team, league_id
         )
         away_team_id, away_team_full_name, away_source = await self.multi_source.search_team(
-            away_team_name, league_id
+            away_team, league_id
         )
 
         if not home_team_id or not away_team_id:
@@ -313,7 +298,7 @@ class MatchAnalyzer:
                 if not isinstance(home_players, Exception):
                     analysis.home_lineup = TeamLineup(
                         team_id=home_team_id,
-                        team_name=home_team_name,
+                        team_name=home_team,
                         starting_xi=home_players[:11],
                         substitutes=home_players[11:],
                         missing_players=home_injuries
@@ -324,7 +309,7 @@ class MatchAnalyzer:
                 if not isinstance(away_players, Exception):
                     analysis.away_lineup = TeamLineup(
                         team_id=away_team_id,
-                        team_name=away_team_name,
+                        team_name=away_team,
                         starting_xi=away_players[:11],
                         substitutes=away_players[11:],
                         missing_players=away_injuries
@@ -342,8 +327,8 @@ class MatchAnalyzer:
             away_xg = analysis.away_stats.avg_goals_against
 
             prediction = self.soccer_predictor.predict_from_lambdas(
-                home_team_name,
-                away_team_name,
+                home_team,
+                away_team,
                 lambda_home=home_xg,
                 lambda_away=away_xg,
                 include_details=True,
@@ -358,7 +343,7 @@ class MatchAnalyzer:
             
             # Filter news relevant to these teams
             relevant_news = self.news_scraper.filter_by_teams(
-                all_news, [home_team_name, away_team_name]
+                all_news, [home_team, away_team]
             )
             
             # Prioritize injury/suspension news
@@ -391,11 +376,11 @@ class MatchAnalyzer:
                 # Jugadores ausentes
                 if analysis.home_lineup and analysis.home_lineup.missing_players:
                     missing_names = [p.player_name for p in analysis.home_lineup.missing_players]
-                    additional_context += f"{home_team_name} ausentes: {', '.join(missing_names)}\n"
+                    additional_context += f"{home_team} ausentes: {', '.join(missing_names)}\n"
 
                 if analysis.away_lineup and analysis.away_lineup.missing_players:
                     missing_names = [p.player_name for p in analysis.away_lineup.missing_players]
-                    additional_context += f"{away_team_name} ausentes: {', '.join(missing_names)}\n"
+                    additional_context += f"{away_team} ausentes: {', '.join(missing_names)}\n"
                 
                 # Noticias recientes
                 if analysis.relevant_news:
@@ -403,35 +388,13 @@ class MatchAnalyzer:
                     for news in analysis.relevant_news[:3]:
                         additional_context += f"- {news.title}\n"
 
-                # Usar análisis colaborativo si ambas IAs disponibles
-                if (self.use_collaborative and 
-                    self.collaborative_analyzer.is_collaborative_available()):
+                # Blackbox AI analysis only
+                if self.blackbox_client.is_available():
+                    logger.info("🤖 Running Blackbox AI analysis...")
                     
-                    logger.info("🤝 Running collaborative AI analysis (Gemini + Blackbox)...")
-                    
-                    collaborative_result = await self.collaborative_analyzer.analyze_match_comprehensive(
-                        home_team_name,
-                        away_team_name,
-                        home_form,
-                        away_form,
-                        h2h_results,
-                        additional_context if additional_context else None,
-                    )
-                    
-                    analysis.collaborative_analysis = collaborative_result
-                    analysis.ai_analysis = collaborative_result.consensus
-                    
-                    logger.info(
-                        f"✓ Collaborative analysis complete "
-                        f"(agreement: {collaborative_result.agreement_score:.0%}, "
-                        f"confidence: {collaborative_result.consensus.confidence:.0%})"
-                    )
-                
-                else:
-                    # Single AI analysis
-                    ai_analysis = await self.gemini_client.analyze_match_context(
-                        home_team_name,
-                        away_team_name,
+                    ai_analysis = await self.blackbox_client.analyze_match_context(
+                        home_team,
+                        away_team,
                         home_form,
                         away_form,
                         h2h_results,
@@ -439,6 +402,13 @@ class MatchAnalyzer:
                     )
                     
                     analysis.ai_analysis = ai_analysis
+                    
+                    logger.info(
+                        f"✓ Blackbox analysis complete "
+                        f"(confidence: {ai_analysis.confidence:.0%})"
+                    )
+                else:
+                    logger.warning("⚠️ Blackbox AI not available")
 
                 # Ajustar predicción con IA
                 if analysis.prediction and analysis.ai_analysis:
@@ -453,8 +423,8 @@ class MatchAnalyzer:
 
                     # Recalcular con lambdas ajustadas
                     analysis.prediction = self.soccer_predictor.predict_from_lambdas(
-                        home_team_name,
-                        away_team_name,
+                        home_team,
+                        away_team,
                         lambda_home=adjusted_home_lambda,
                         lambda_away=adjusted_away_lambda,
                         include_details=True,
@@ -486,7 +456,7 @@ class MatchAnalyzer:
         # 7b. Obtener odds si se solicita
         if fetch_odds and self.odds_client:
             try:
-                logger.info(f"Fetching odds for {home_team_name} vs {away_team_name}...")
+                logger.info(f"Fetching odds for {home_team} vs {away_team}...")
                 
                 # Map league_id to odds API sport key
                 sport_key_map = {
@@ -511,12 +481,12 @@ class MatchAnalyzer:
                 # Find match by team names (fuzzy matching)
                 for event in odds_events:
                     home_match = (
-                        home_team_name.lower() in event.home_team.lower() or
-                        event.home_team.lower() in home_team_name.lower()
+                        home_team.lower() in event.home_team.lower() or
+                        event.home_team.lower() in home_team.lower()
                     )
                     away_match = (
-                        away_team_name.lower() in event.away_team.lower() or
-                        event.away_team.lower() in away_team_name.lower()
+                        away_team.lower() in event.away_team.lower() or
+                        event.away_team.lower() in away_team.lower()
                     )
                     
                     if home_match and away_match:
@@ -600,10 +570,10 @@ class MatchAnalyzer:
                 if home_recent and away_recent:
                     # Construir TeamForm con datos avanzados
                     home_form = self._build_team_form_from_matches(
-                        home_team_name, home_recent, home_team_id
+                        home_team, home_recent, home_team_id
                     )
                     away_form = self._build_team_form_from_matches(
-                        away_team_name, away_recent, away_team_id
+                        away_team, away_recent, away_team_id
                     )
                     
                     # Predicciones de mercados alternativos

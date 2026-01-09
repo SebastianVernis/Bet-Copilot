@@ -18,16 +18,87 @@ from textual.widgets import (
 )
 from textual.reactive import reactive
 from textual.message import Message
+from textual.suggester import Suggester
 
 from bet_copilot.news import NewsScraper, NewsArticle
 from bet_copilot.services.match_analyzer import MatchAnalyzer
 from bet_copilot.api.odds_client import OddsAPIClient
-from bet_copilot.api.football_client import FootballAPIClient
-from bet_copilot.ai.gemini_client import GeminiClient
-from bet_copilot.ai.blackbox_client import BlackboxClient
+from bet_copilot.api.football_client_with_fallback import create_football_client
+from bet_copilot.ai.ai_client import create_ai_client
+from bet_copilot.math_engine.soccer_predictor import SoccerPredictor
+from bet_copilot.math_engine.kelly import KellyCriterion
 from bet_copilot.math_engine.alternative_markets import AlternativeMarketsPredictor
 
 logger = logging.getLogger(__name__)
+
+
+class BetCopilotSuggester(Suggester):
+    """Custom suggester for command autocompletion in TUI."""
+    
+    def __init__(self, app_instance=None):
+        super().__init__()
+        self.app_instance = app_instance
+        
+        # Base commands
+        self.commands = [
+            "ayuda", "help",
+            "salud", "health",
+            "dashboard",
+            "mercados", "markets",
+            "analizar", "analyze", "analyse",
+            "salir", "quit", "exit",
+        ]
+        
+        # Sport keys
+        self.sport_keys = [
+            "soccer_epl", "soccer_la_liga", "soccer_serie_a",
+            "soccer_bundesliga", "soccer_france_ligue_one",
+            "soccer_brazil_campeonato", "soccer_uefa_champs_league",
+            "soccer_uefa_europa_league", "soccer_portugal_primeira_liga",
+            "soccer_netherlands_eredivisie",
+            "americanfootball_nfl", "basketball_nba", "icehockey_nhl",
+        ]
+    
+    async def get_suggestion(self, value: str) -> str | None:
+        """Get suggestion based on current input."""
+        if not value:
+            return None
+        
+        value_lower = value.lower().strip()
+        parts = value_lower.split()
+        
+        # No parts - suggest first command
+        if not parts:
+            return None
+        
+        # First word - command completion
+        if len(parts) == 1:
+            for cmd in self.commands:
+                if cmd.startswith(value_lower) and cmd != value_lower:
+                    return cmd
+            return None
+        
+        # Second word - context-specific suggestions
+        if len(parts) >= 2:
+            command = parts[0]
+            
+            # Sport keys for mercados/markets
+            if command in ["mercados", "markets"]:
+                arg = " ".join(parts[1:]).lower()
+                for sport_key in self.sport_keys:
+                    if sport_key.startswith(arg) and sport_key != arg:
+                        return f"{command} {sport_key}"
+            
+            # Match names for analizar/analyze
+            elif command in ["analizar", "analyze", "analyse"]:
+                if self.app_instance and hasattr(self.app_instance, 'events'):
+                    arg = " ".join(parts[1:]).lower()
+                    for event in self.app_instance.events:
+                        match_str = f"{event.home_team} vs {event.away_team}"
+                        if match_str.lower().startswith(arg) and match_str.lower() != arg:
+                            return f"{command} {match_str}"
+        
+        return None
 
 
 class APIHealthWidget(Static):
@@ -39,7 +110,6 @@ class APIHealthWidget(Static):
     
     odds_status = reactive("unknown")
     football_status = reactive("unknown")
-    gemini_status = reactive("unknown")
     blackbox_status = reactive("unknown")
     
     odds_requests = reactive(0)
@@ -77,8 +147,6 @@ class APIHealthWidget(Static):
             f"{self.odds_requests}/500 daily\n"
             f"{status_icon(self.football_status)} Football API   "
             f"{self.football_requests}/100 daily\n"
-            f"{status_icon(self.gemini_status)} Gemini AI     "
-            f"{'✓' if self.gemini_status == 'healthy' else '✗'}\n"
             f"{status_icon(self.blackbox_status)} Blackbox AI   "
             f"{'✓' if self.blackbox_status == 'healthy' else '✗'}"
         )
@@ -220,7 +288,7 @@ class MarketWatchWidget(Static):
             if not soccer_key:
                 return
             
-            odds = await app.odds_client.get_odds(sport=soccer_key, regions=['us'], markets=['h2h'])
+            odds = await app.odds_client.get_odds(sport_key=soccer_key, regions="us", markets="h2h")
             
             # Analyze top 5 matches
             markets = []
@@ -511,11 +579,20 @@ class BetCopilotApp(App):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Initialize services
-        self.match_analyzer = MatchAnalyzer()
         self.odds_client = OddsAPIClient()
-        self.football_client = FootballAPIClient()
-        self.gemini_client = GeminiClient()
-        self.blackbox_client = BlackboxClient()
+        self.football_client = create_football_client()  # With fallback to SimpleProvider
+        self.ai_client = create_ai_client()  # Unified AI with fallback
+        self.soccer_predictor = SoccerPredictor()
+        self.kelly = KellyCriterion()
+        
+        # MatchAnalyzer creates its own clients for collaborative analysis
+        self.match_analyzer = MatchAnalyzer(
+            odds_client=self.odds_client,
+            football_client=self.football_client,
+            soccer_predictor=self.soccer_predictor,
+            kelly=self.kelly,
+            use_collaborative_analysis=True,
+        )
         self.alt_markets = AlternativeMarketsPredictor()
     
     def compose(self) -> ComposeResult:
@@ -535,10 +612,11 @@ class BetCopilotApp(App):
         # Alternative markets summary
         yield AlternativeMarketsWidget(id="alternative-markets")
         
-        # Input area (bottom)
+        # Input area (bottom) with suggester
         with Horizontal(id="input-row"):
             yield Input(
                 placeholder="Enter team names (e.g., 'Man City vs Liverpool') or command...",
+                suggester=BetCopilotSuggester(app_instance=self),
                 id="main-input"
             )
             yield Button("Analyze", variant="success", id="btn-analyze")
@@ -551,11 +629,14 @@ class BetCopilotApp(App):
         self.title = self.TITLE
         self.sub_title = self.SUB_TITLE
         
+        # Initialize events list for autocompletion
+        self.events = []
+        
         # Check API health
         await self.update_api_health()
         
         # Show welcome notification
-        self.notify("🚀 Bet-Copilot TUI started! Type a match or press 'r' to scan markets.", severity="information")
+        self.notify("🚀 Bet-Copilot TUI iniciado! Comandos: mercados, analizar, ayuda", severity="information")
         
         logger.info("Textual app mounted")
     
@@ -564,10 +645,9 @@ class BetCopilotApp(App):
         api_widget = self.query_one(APIHealthWidget)
         
         # Check each API
-        api_widget.odds_status = "healthy" if self.odds_client else "unknown"
-        api_widget.football_status = "healthy" if self.football_client else "unknown"
-        api_widget.gemini_status = "healthy" if self.gemini_client.is_available() else "down"
-        api_widget.blackbox_status = "healthy" if self.blackbox_client.is_available() else "down"
+        api_widget.odds_status = "healthy" if self.odds_client.api_key else "unknown"
+        api_widget.football_status = "healthy" if self.football_client.is_available() else "degraded"
+        api_widget.blackbox_status = "healthy" if self.ai_client.is_available() else "down"
         
         # Get request counts from cache/circuit breaker
         api_widget.odds_requests = 0  # TODO: Get from circuit breaker
@@ -596,25 +676,114 @@ class BetCopilotApp(App):
     async def process_command(self, command: str) -> None:
         """Process user command."""
         logger.info(f"Processing command: {command}")
+        command_lower = command.strip().lower()
         
-        # Parse command
-        if "vs" in command.lower():
-            # Match analysis command
+        if not command_lower:
+            return
+        
+        # Comandos de ayuda (español e inglés)
+        if command_lower in ["ayuda", "help"]:
+            self.notify("Comandos: mercados [sport], analizar [partido], salud, dashboard, salir", severity="information")
+            return
+        
+        # Comandos de salud (español e inglés)
+        elif command_lower in ["salud", "health"]:
+            await self.update_api_health()
+            self.notify("✓ APIs verificadas", severity="information")
+            return
+        
+        # Dashboard - refresh all
+        elif command_lower == "dashboard":
+            await self.action_refresh_all()
+            return
+        
+        # Mercados (español e inglés)
+        elif command_lower.startswith("mercados") or command_lower.startswith("markets"):
+            parts = command_lower.split()
+            sport_key = parts[1] if len(parts) > 1 else "soccer_epl"
+            await self.fetch_markets(sport_key)
+            return
+        
+        # Analizar (español e inglés)
+        elif command_lower.startswith("analizar") or command_lower.startswith("analyze") or command_lower.startswith("analyse"):
+            # Extraer nombre del partido (preservar mayúsculas originales)
+            if command_lower.startswith("analizar"):
+                match_part = command.strip()[8:].strip()
+            else:
+                match_part = command.strip()[7:].strip()
+            
+            match_part = match_part.strip('"\'')
+            
+            if match_part:
+                await self.analyze_match_from_string(match_part)
+            else:
+                self.notify("Uso: analizar <partido>\nEjemplo: analizar Arsenal vs Chelsea", severity="warning")
+            return
+        
+        # Salir (español e inglés)
+        elif command_lower in ["salir", "quit", "exit", "q"]:
+            self.exit()
+            return
+        
+        # Parse match analysis ("Team1 vs Team2")
+        elif "vs" in command_lower:
             parts = command.split("vs")
             if len(parts) == 2:
                 home_team = parts[0].strip()
                 away_team = parts[1].strip()
-                
                 await self.analyze_match(home_team, away_team)
         else:
             # Other commands
-            self.notify(f"Unknown command: {command}", severity="warning")
+            self.notify(f"Comando desconocido: {command}\nEscribe 'ayuda' para ver comandos", severity="warning")
+    
+    async def fetch_markets(self, sport_key: str = "soccer_epl"):
+        """Fetch markets for a sport."""
+        self.notify(f"📊 Obteniendo mercados para {sport_key}...")
+        
+        try:
+            events = await self.odds_client.get_odds(sport_key)
+            
+            if not events:
+                self.notify("No se encontraron eventos", severity="warning")
+                return
+            
+            self.notify(f"✓ {len(events)} eventos encontrados", severity="information")
+            
+            # Store events for autocompletion
+            self.events = events
+            
+            # Update market watch with some events
+            market_widget = self.query_one(MarketWatchWidget)
+            await market_widget.refresh_markets()
+            
+        except Exception as e:
+            logger.error(f"Error fetching markets: {str(e)}")
+            self.notify(f"Error: {str(e)}", severity="error")
+    
+    async def analyze_match_from_string(self, match_str: str) -> None:
+        """Analyze a match from string input."""
+        # Search in loaded events first
+        if hasattr(self, 'events') and self.events:
+            for event in self.events:
+                event_str = f"{event.home_team} vs {event.away_team}"
+                if match_str.lower() in event_str.lower():
+                    await self.analyze_match(event.home_team, event.away_team)
+                    return
+        
+        # If not found, try parsing as "Team1 vs Team2"
+        if "vs" in match_str.lower():
+            parts = match_str.split("vs")
+            if len(parts) == 2:
+                await self.analyze_match(parts[0].strip(), parts[1].strip())
+                return
+        
+        self.notify(f"Partido no encontrado: {match_str}\nIntenta 'mercados' primero", severity="warning")
     
     async def analyze_match(self, home_team: str, away_team: str) -> None:
         """
         Analyze a match and update dashboard with real data.
         """
-        self.notify(f"🔍 Analyzing: {home_team} vs {away_team}")
+        self.notify(f"🔍 Analizando: {home_team} vs {away_team}")
         
         try:
             # Run full analysis
@@ -739,8 +908,8 @@ class BetCopilotApp(App):
                 await self.odds_client.close()
             if hasattr(self, 'football_client'):
                 await self.football_client.close()
-            if hasattr(self, 'blackbox_client'):
-                await self.blackbox_client.close()
+            if hasattr(self, 'ai_client'):
+                await self.ai_client.close()
             logger.info("App cleanup complete")
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")

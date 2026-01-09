@@ -158,7 +158,7 @@ class TestMatchAnalyzer:
         """Test analyzer initialization."""
         assert self.analyzer.odds_client is not None
         assert self.analyzer.football_client is not None
-        assert self.analyzer.gemini_client is not None
+        assert self.analyzer.blackbox_client is not None
         assert self.analyzer.soccer_predictor is not None
         assert self.analyzer.kelly is not None
 

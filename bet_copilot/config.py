@@ -11,7 +11,7 @@ try:
     from dotenv import load_dotenv
     # Load from project root
     env_path = Path(__file__).parent.parent / ".env"
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv(dotenv_path=env_path, override=True)
 except ImportError:
     # python-dotenv not installed, use system env vars only
     pass

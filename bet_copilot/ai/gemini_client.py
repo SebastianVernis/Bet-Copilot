@@ -32,13 +32,13 @@ class GeminiClient:
     - External factors (weather, motivation)
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash-lite"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-lite"):
         """
         Initialize Gemini client.
         
         Args:
             api_key: Gemini API key
-            model: Model to use (default: gemini-2.5-flash-lite)
+            model: Model to use (default: gemini-2.0-flash-lite)
         """
         self.api_key = api_key or GEMINI_API_KEY
         self.model_name = model
