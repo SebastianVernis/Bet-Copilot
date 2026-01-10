@@ -26,7 +26,7 @@ class TestAIClient:
         """Test get active provider name."""
         client = create_ai_client()
         provider = client.get_active_provider()
-        assert provider in ["Gemini", "Blackbox", "SimpleAnalyzer"]
+        assert provider in ["Blackbox", "SimpleAnalyzer"]
     
     def test_fallback_chain_exists(self):
         """Test fallback chain is created."""
@@ -36,24 +36,13 @@ class TestAIClient:
         # Should have at least SimpleAnalyzer
         assert len(client.fallback_chain) >= 1
     
-    def test_prefer_gemini_true(self):
-        """Test prefer_gemini parameter."""
-        client = create_ai_client(prefer_gemini=True)
-        # Should try Gemini first if available
-        assert client.primary_name in ["Gemini", "SimpleAnalyzer"]
-    
-    def test_prefer_gemini_false(self):
-        """Test prefer_gemini=False uses Blackbox."""
-        client = create_ai_client(prefer_gemini=False)
-        # Should prefer Blackbox or SimpleAnalyzer
-        assert client.primary_name in ["Blackbox", "SimpleAnalyzer"]
+
     
     @pytest.mark.asyncio
     async def test_analyze_with_simple_analyzer(self):
         """Test analysis falls through to SimpleAnalyzer."""
         # Force SimpleAnalyzer by not configuring keys
         client = create_ai_client(
-            gemini_api_key=None,
             blackbox_api_key=None,
         )
         

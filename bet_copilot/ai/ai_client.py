@@ -8,7 +8,6 @@ import logging
 from typing import Dict, List, Optional
 
 from bet_copilot.ai.types import ContextualAnalysis
-from bet_copilot.ai.gemini_client import GeminiClient
 from bet_copilot.ai.blackbox_client import BlackboxClient
 from bet_copilot.ai.simple_analyzer import SimpleAnalyzer
 
@@ -20,39 +19,28 @@ class AIClient:
     Unified AI client with automatic fallback.
     
     Priority:
-    1. Gemini (primary, if configured and available)
-    2. Blackbox (secondary fallback)
-    3. SimpleAnalyzer (ultimate fallback, always available)
+    1. Blackbox (primary, if configured and available)
+    2. SimpleAnalyzer (ultimate fallback, always available)
     
-    Provides same interface as GeminiClient for drop-in replacement.
+    Provides same interface as BlackboxClient for drop-in replacement.
     """
     
     def __init__(
         self,
-        gemini_api_key: Optional[str] = None,
         blackbox_api_key: Optional[str] = None,
-        prefer_gemini: bool = True,
     ):
         """
-        Initialize AI client with multi-level fallback.
+        Initialize AI client with fallback.
         
         Args:
-            gemini_api_key: Gemini API key (optional)
             blackbox_api_key: Blackbox API key (optional)
-            prefer_gemini: Whether to prefer Gemini over Blackbox (default: True)
         """
-        self.prefer_gemini = prefer_gemini
-        
-        # Initialize all providers
-        self.gemini = GeminiClient(api_key=gemini_api_key)
+        # Initialize providers
         self.blackbox = BlackboxClient(api_key=blackbox_api_key)
         self.simple = SimpleAnalyzer()  # Always available
         
         # Determine primary
-        if prefer_gemini and self.gemini.is_available():
-            self.primary = self.gemini
-            self.primary_name = "Gemini"
-        elif self.blackbox.is_available():
+        if self.blackbox.is_available():
             self.primary = self.blackbox
             self.primary_name = "Blackbox"
         else:
@@ -61,8 +49,6 @@ class AIClient:
         
         # Build fallback chain
         self.fallback_chain = []
-        if self.gemini.is_available() and self.primary != self.gemini:
-            self.fallback_chain.append(("Gemini", self.gemini))
         if self.blackbox.is_available() and self.primary != self.blackbox:
             self.fallback_chain.append(("Blackbox", self.blackbox))
         if self.primary != self.simple:
@@ -76,8 +62,8 @@ class AIClient:
     
     def is_available(self) -> bool:
         """Check if any AI client is available."""
-        return self.primary.is_available() or (
-            self.fallback is not None and self.fallback.is_available()
+        return self.primary.is_available() or any(
+            client.is_available() for _, client in self.fallback_chain
         )
     
     def get_active_provider(self) -> str:
@@ -194,23 +180,17 @@ class AIClient:
 
 # Convenience function for drop-in replacement
 def create_ai_client(
-    gemini_api_key: Optional[str] = None,
     blackbox_api_key: Optional[str] = None,
-    prefer_gemini: bool = True,
 ) -> AIClient:
     """
     Create AI client with automatic fallback.
     
     Args:
-        gemini_api_key: Gemini API key (optional)
         blackbox_api_key: Blackbox API key (optional)
-        prefer_gemini: Whether to prefer Gemini over Blackbox
         
     Returns:
         AIClient instance
     """
     return AIClient(
-        gemini_api_key=gemini_api_key,
         blackbox_api_key=blackbox_api_key,
-        prefer_gemini=prefer_gemini,
     )

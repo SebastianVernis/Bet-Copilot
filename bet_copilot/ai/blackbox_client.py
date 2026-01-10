@@ -167,6 +167,9 @@ class BlackboxClient:
                     logger.error(f"Blackbox API error {response.status}: {error_text[:200]}")
                     raise Exception(f"API returned status {response.status}")
         
+        except asyncio.CancelledError:
+            logger.info("Blackbox request cancelled by user")
+            raise
         except asyncio.TimeoutError:
             logger.error("Blackbox API timeout (30s)")
             raise
@@ -189,47 +192,48 @@ class BlackboxClient:
         """Build prompt for Blackbox."""
         h2h_str = ", ".join(h2h_results) if h2h_results else "No data"
         
-        prompt = f"""You are a sports analytics AI helping to predict football match outcomes.
+        prompt = f"""Eres una IA de análisis deportivo que ayuda a predecir resultados de partidos de fútbol.
 
-Match: {home_team} vs {away_team}
+Partido: {home_team} vs {away_team}
 
-Context:
-- Home team form (last 5): {home_form} (W=Win, D=Draw, L=Loss)
-- Away team form (last 5): {away_form}
-- Head-to-head (last 5): {h2h_str} (H=Home win, A=Away win, D=Draw)
+Contexto:
+- Forma equipo local (últimos 5): {home_form} (W=Victoria, D=Empate, L=Derrota)
+- Forma equipo visitante (últimos 5): {away_form}
+- Historial directo (últimos 5): {h2h_str} (H=Victoria local, A=Victoria visitante, D=Empate)
 """
         
         if additional_context:
-            prompt += f"\nAdditional context:\n{additional_context}\n"
+            prompt += f"\nContexto adicional:\n{additional_context}\n"
         
         prompt += """
-Based on this context, provide lambda adjustments for our Poisson model:
+Basado en este contexto, proporciona ajustes lambda para nuestro modelo de Poisson:
 
-Task:
-1. Analyze team form, momentum, and context
-2. Identify key factors (injuries, suspensions, motivation, etc.)
-3. Suggest lambda adjustments (multipliers) for expected goals
-   - Values: 0.8-1.2 (0.9 = -10%, 1.1 = +10%)
-   - Default is 1.0 (no adjustment)
-4. Explain reasoning
+Tarea:
+1. Analiza forma de equipos, momentum y contexto
+2. Identifica factores clave (lesiones, suspensiones, motivación, etc.)
+3. Sugiere ajustes lambda (multiplicadores) para goles esperados
+   - Valores: 0.8-1.2 (0.9 = -10%, 1.1 = +10%)
+   - Por defecto es 1.0 (sin ajuste)
+4. Explica el razonamiento
 
-Output format (strict JSON):
+Formato de salida (JSON estricto):
 {
     "home_adjustment": 1.0,
     "away_adjustment": 1.0,
     "confidence": 0.7,
     "key_factors": ["Factor 1", "Factor 2"],
     "sentiment": "NEUTRAL",
-    "reasoning": "Brief explanation"
+    "reasoning": "Explicación breve EN ESPAÑOL"
 }
 
-Important:
-- Be conservative (small adjustments)
-- Only deviate from 1.0 if strong evidence
-- Confidence: 0.0-1.0 (how confident in adjustments)
-- Sentiment: POSITIVE (home favored), NEUTRAL, NEGATIVE (away favored)
+Importante:
+- Sé conservador (ajustes pequeños)
+- Solo desvíate de 1.0 si hay evidencia fuerte
+- Confianza: 0.0-1.0 (qué tan confiado en los ajustes)
+- Sentimiento: POSITIVE (local favorecido), NEUTRAL, NEGATIVE (visitante favorecido)
+- CRUCIAL: Escribe el 'reasoning' y 'key_factors' completamente en ESPAÑOL
 
-Respond ONLY with the JSON object, no additional text.
+Responde SOLO con el objeto JSON, sin texto adicional.
 """
         
         return prompt
@@ -274,9 +278,9 @@ Respond ONLY with the JSON object, no additional text.
             confidence=0.5,
             lambda_adjustment_home=1.0,
             lambda_adjustment_away=1.0,
-            key_factors=["No AI analysis available"],
+            key_factors=["An\u00e1lisis de IA no disponible"],
             sentiment="NEUTRAL",
-            reasoning="Blackbox not available or error occurred",
+            reasoning="Blackbox no disponible o ocurri\u00f3 un error",
         )
     
     async def analyze_multiple_matches(

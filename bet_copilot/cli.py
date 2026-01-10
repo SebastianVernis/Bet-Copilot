@@ -46,12 +46,13 @@ class BetCopilotCLI:
         self.ai_client = create_ai_client()  # Unified AI with fallback
         self.soccer_predictor = SoccerPredictor()
         self.kelly = KellyCriterion()
+        
+        # MatchAnalyzer creates its own Gemini and Blackbox clients for collaborative analysis
         self.match_analyzer = MatchAnalyzer(
-            self.odds_client,
-            self.football_client,
-            self.ai_client,
-            self.soccer_predictor,
-            self.kelly,
+            odds_client=self.odds_client,
+            football_client=self.football_client,
+            soccer_predictor=self.soccer_predictor,
+            kelly=self.kelly,
         )
 
         # Estado
@@ -271,13 +272,17 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
         from rich.spinner import Spinner
         from rich.live import Live
 
-        with self.console.status(
-            f"[bold cyan]Obteniendo datos de API-Football...", spinner="dots"
-        ):
-            # Análisis completo con MatchAnalyzer
-            analysis = await self.match_analyzer.analyze_from_odds_event(
-                event_found, league_id=39, season=2024
-            )
+        try:
+            with self.console.status(
+                f"[bold cyan]Obteniendo datos de API-Football...", spinner="dots"
+            ):
+                # Análisis completo con MatchAnalyzer
+                analysis = await self.match_analyzer.analyze_from_odds_event(
+                    event_found, league_id=39, season=2024
+                )
+        except asyncio.CancelledError:
+            self.console.print("\n[yellow]Análisis cancelado por el usuario[/yellow]\n")
+            return
 
         # Mostrar información del partido
         self.console.print(f"[bold]╔═══ {analysis.home_team} vs {analysis.away_team} ═══╗[/bold]", style=NEON_PURPLE)
