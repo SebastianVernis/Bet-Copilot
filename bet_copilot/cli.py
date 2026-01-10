@@ -13,6 +13,8 @@ from rich.prompt import Prompt, Confirm
 from rich.text import Text
 from rich.table import Table
 from rich.box import MINIMAL
+from rich.pager import Pager
+from rich import print as rprint
 
 from bet_copilot.api.odds_client import OddsAPIClient
 from bet_copilot.api.football_client_with_fallback import create_football_client
@@ -114,6 +116,7 @@ soccer_bundesliga, soccer_france_ligue_one, americanfootball_nfl, etc.
   [green]←/→[/green]             Mover cursor en la línea
   [green]Ctrl+R[/green]           Buscar en historial
   [green]Ctrl+C[/green]           Cancelar comando actual
+  [green]q[/green]                Salir del paginador (cuando hay scroll)
 
 [dim]Nota: El modelo actual usa ajustes simples de probabilidad implícita.
 Para uso en producción, integre estadísticas de API-Football y predicciones Poisson.[/dim]
@@ -178,7 +181,8 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
                 return
 
             self.console.print(f"Se encontraron {len(events)} eventos", style=NEON_GREEN)
-            self.console.print("[dim]Usa 'analizar [nombre]' + Tab para autocompletar[/dim]\n")
+            self.console.print("[dim]Usa 'analizar [nombre]' + Tab para autocompletar[/dim]")
+            self.console.print("[dim]Presiona 'q' para salir del scroll si hay muchos eventos[/dim]\n")
 
             # Store full events for autocompletion
             self.events = events
@@ -187,16 +191,36 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
             if hasattr(self, 'command_input'):
                 self.command_input.completer.cli_instance = self
 
-            # Display first few
-            for event in events[:5]:
-                self.console.print(
-                    f"  • {event.home_team} vs {event.away_team}",
-                    style="cyan",
-                )
-                self.console.print(
-                    f"    {event.commence_time.strftime('%Y-%m-%d %H:%M')}",
-                    style="dim",
-                )
+            # Build full event list for pager if there are many events
+            if len(events) > 10:
+                from io import StringIO
+                output = StringIO()
+                temp_console = Console(file=output, force_terminal=True, width=self.console.width)
+                
+                for event in events:
+                    temp_console.print(
+                        f"  • {event.home_team} vs {event.away_team}",
+                        style="cyan",
+                    )
+                    temp_console.print(
+                        f"    {event.commence_time.strftime('%Y-%m-%d %H:%M')}",
+                        style="dim",
+                    )
+                
+                # Use pager for navigation
+                with self.console.pager(styles=True):
+                    self.console.print(output.getvalue())
+            else:
+                # Display directly if few events
+                for event in events:
+                    self.console.print(
+                        f"  • {event.home_team} vs {event.away_team}",
+                        style="cyan",
+                    )
+                    self.console.print(
+                        f"    {event.commence_time.strftime('%Y-%m-%d %H:%M')}",
+                        style="dim",
+                    )
 
             # Build markets with real odds
             self.markets = []
@@ -284,14 +308,19 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
             self.console.print("\n[yellow]Análisis cancelado por el usuario[/yellow]\n")
             return
 
+        # Build analysis output for pager
+        from io import StringIO
+        output = StringIO()
+        temp_console = Console(file=output, force_terminal=True, width=self.console.width)
+
         # Mostrar información del partido
-        self.console.print(f"[bold]╔═══ {analysis.home_team} vs {analysis.away_team} ═══╗[/bold]", style=NEON_PURPLE)
-        self.console.print(f"Liga: {analysis.league}")
-        self.console.print(f"Fecha: {analysis.commence_time.strftime('%Y-%m-%d %H:%M')}\n")
+        temp_console.print(f"[bold]╔═══ {analysis.home_team} vs {analysis.away_team} ═══╗[/bold]", style=NEON_PURPLE)
+        temp_console.print(f"Liga: {analysis.league}")
+        temp_console.print(f"Fecha: {analysis.commence_time.strftime('%Y-%m-%d %H:%M')}\n")
 
         # Estadísticas de equipos
         if analysis.home_stats and analysis.away_stats:
-            self.console.print("[bold]📊 Estadísticas de Equipos[/bold]\n", style=NEON_CYAN)
+            temp_console.print("[bold]📊 Estadísticas de Equipos[/bold]\n", style=NEON_CYAN)
 
             from rich.table import Table
             stats_table = Table(box=MINIMAL, show_header=True)
@@ -320,97 +349,103 @@ Para uso en producción, integre estadísticas de API-Football y predicciones Po
                 f"{analysis.away_stats.avg_goals_against:.2f}",
             )
 
-            self.console.print(stats_table)
-            self.console.print()
+            temp_console.print(stats_table)
+            temp_console.print()
 
         # Jugadores ausentes
         if analysis.home_lineup and analysis.home_lineup.missing_players:
-            self.console.print(f"[bold red]⚠️ {analysis.home_team} - Jugadores Ausentes:[/bold red]")
+            temp_console.print(f"[bold red]⚠️ {analysis.home_team} - Jugadores Ausentes:[/bold red]")
             for player in analysis.home_lineup.missing_players[:5]:
                 status = "Lesionado" if player.is_injured else "Suspendido"
-                self.console.print(f"  • {player.player_name} ({status})", style="red")
-            self.console.print()
+                temp_console.print(f"  • {player.player_name} ({status})", style="red")
+            temp_console.print()
 
         if analysis.away_lineup and analysis.away_lineup.missing_players:
-            self.console.print(f"[bold red]⚠️ {analysis.away_team} - Jugadores Ausentes:[/bold red]")
+            temp_console.print(f"[bold red]⚠️ {analysis.away_team} - Jugadores Ausentes:[/bold red]")
             for player in analysis.away_lineup.missing_players[:5]:
                 status = "Lesionado" if player.is_injured else "Suspendido"
-                self.console.print(f"  • {player.player_name} ({status})", style="red")
-            self.console.print()
+                temp_console.print(f"  • {player.player_name} ({status})", style="red")
+            temp_console.print()
 
         # H2H
         if analysis.h2h_stats and analysis.h2h_stats.matches_played > 0:
-            self.console.print("[bold]🔄 Historial Directo (H2H)[/bold]\n", style=NEON_CYAN)
-            self.console.print(
+            temp_console.print("[bold]🔄 Historial Directo (H2H)[/bold]\n", style=NEON_CYAN)
+            temp_console.print(
                 f"Últimos {analysis.h2h_stats.matches_played} enfrentamientos: "
                 f"[green]{analysis.h2h_stats.home_wins}[/green] - "
                 f"[yellow]{analysis.h2h_stats.draws}[/yellow] - "
                 f"[red]{analysis.h2h_stats.away_wins}[/red]"
             )
-            self.console.print(
+            temp_console.print(
                 f"Resultados recientes: {' '.join(analysis.h2h_stats.last_5_results)}\n"
             )
 
         # Predicción Poisson
         if analysis.prediction:
-            self.console.print("[bold]🎲 Predicción Matemática (Poisson)[/bold]\n", style=NEON_CYAN)
-            self.console.print(f"Expected Goals: [cyan]{analysis.prediction.home_lambda:.2f}[/cyan] - [pink]{analysis.prediction.away_lambda:.2f}[/pink]")
-            self.console.print(f"Probabilidades:")
-            self.console.print(
+            temp_console.print("[bold]🎲 Predicción Matemática (Poisson)[/bold]\n", style=NEON_CYAN)
+            temp_console.print(f"Expected Goals: [cyan]{analysis.prediction.home_lambda:.2f}[/cyan] - [pink]{analysis.prediction.away_lambda:.2f}[/pink]")
+            temp_console.print(f"Probabilidades:")
+            temp_console.print(
                 f"  Victoria Local: [green]{analysis.prediction.home_win_prob*100:.1f}%[/green]"
             )
-            self.console.print(f"  Empate: [yellow]{analysis.prediction.draw_prob*100:.1f}%[/yellow]")
-            self.console.print(
+            temp_console.print(f"  Empate: [yellow]{analysis.prediction.draw_prob*100:.1f}%[/yellow]")
+            temp_console.print(
                 f"  Victoria Visitante: [red]{analysis.prediction.away_win_prob*100:.1f}%[/red]"
             )
-            self.console.print(
+            temp_console.print(
                 f"Score más probable: {analysis.prediction.most_likely_score[0]}-{analysis.prediction.most_likely_score[1]} "
                 f"({analysis.prediction.most_likely_score_prob*100:.1f}%)\n"
             )
 
         # Análisis IA
         if analysis.ai_analysis:
-            self.console.print("[bold]🤖 Análisis Contextual (Gemini AI)[/bold]\n", style=NEON_CYAN)
-            self.console.print(f"Confianza: {analysis.ai_analysis.confidence*100:.0f}%")
-            self.console.print(f"Sentimiento: {analysis.ai_analysis.sentiment}")
-            self.console.print(f"Razonamiento: {analysis.ai_analysis.reasoning}")
+            temp_console.print("[bold]🤖 Análisis Contextual (Gemini AI)[/bold]\n", style=NEON_CYAN)
+            temp_console.print(f"Confianza: {analysis.ai_analysis.confidence*100:.0f}%")
+            temp_console.print(f"Sentimiento: {analysis.ai_analysis.sentiment}")
+            temp_console.print(f"Razonamiento: {analysis.ai_analysis.reasoning}")
             if analysis.ai_analysis.key_factors:
-                self.console.print("\nFactores clave:")
+                temp_console.print("\nFactores clave:")
                 for factor in analysis.ai_analysis.key_factors:
-                    self.console.print(f"  • {factor}", style=LIGHT_GRAY)
-            self.console.print()
+                    temp_console.print(f"  • {factor}", style=LIGHT_GRAY)
+            temp_console.print()
 
         # Insights clave
         insights = analysis.get_key_insights()
         if insights:
-            self.console.print("[bold]💡 Insights Clave[/bold]\n", style=NEON_CYAN)
+            temp_console.print("[bold]💡 Insights Clave[/bold]\n", style=NEON_CYAN)
             for insight in insights:
-                self.console.print(f"  {insight}")
-            self.console.print()
+                temp_console.print(f"  {insight}")
+            temp_console.print()
 
         # Recomendaciones Kelly
         best_bet = analysis.get_best_value_bet()
 
         if best_bet:
-            self.console.print("[bold]💰 Mejor Apuesta de Valor[/bold]\n", style=NEON_GREEN)
-            self.console.print(f"Resultado: [bold]{best_bet['outcome']}[/bold]")
+            temp_console.print("[bold]💰 Mejor Apuesta de Valor[/bold]\n", style=NEON_GREEN)
+            temp_console.print(f"Resultado: [bold]{best_bet['outcome']}[/bold]")
             if best_bet['team']:
-                self.console.print(f"Equipo: {best_bet['team']}")
-            self.console.print(f"Cuota: {best_bet['odds']:.2f}")
-            self.console.print(f"Valor Esperado: [green]+{best_bet['ev']*100:.1f}%[/green]")
+                temp_console.print(f"Equipo: {best_bet['team']}")
+            temp_console.print(f"Cuota: {best_bet['odds']:.2f}")
+            temp_console.print(f"Valor Esperado: [green]+{best_bet['ev']*100:.1f}%[/green]")
 
             risk_names = {"LOW": "BAJO", "MEDIUM": "MEDIO", "HIGH": "ALTO"}
-            self.console.print(
+            temp_console.print(
                 f"Apuesta Recomendada: [bold]{best_bet['stake']:.2f}%[/bold] del bankroll"
             )
-            self.console.print(
+            temp_console.print(
                 f"Nivel de Riesgo: {risk_names.get(best_bet['risk'], best_bet['risk'])}"
             )
-            self.console.print()
+            temp_console.print()
         else:
-            self.console.print(
+            temp_console.print(
                 "[yellow]⚠️ No se detectaron apuestas de valor para este partido[/yellow]\n"
             )
+        
+        # Show analysis with pager for navigation
+        temp_console.print("[dim]Presiona 'q' para volver al CLI, usa flechas ↑/↓ para navegar[/dim]\n")
+        
+        with self.console.pager(styles=True):
+            self.console.print(output.getvalue())
 
     async def show_dashboard(self):
         """Muestra dashboard en vivo con actualización continua."""

@@ -14,7 +14,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import (
     Header, Footer, Static, DataTable, Input, Button, 
-    Label, ProgressBar, Placeholder
+    Label, ProgressBar, Placeholder, RichLog
 )
 from textual.reactive import reactive
 from textual.message import Message
@@ -164,7 +164,8 @@ class NewsWidget(Static):
     
     def compose(self) -> ComposeResult:
         yield Label("📰 Live News Feed")
-        yield ScrollableContainer(id="news-list")
+        log = RichLog(id="news-list", highlight=True, markup=True)
+        yield log
     
     async def on_mount(self) -> None:
         """Fetch news on startup."""
@@ -194,15 +195,15 @@ class NewsWidget(Static):
     def watch_articles(self, articles: List[NewsArticle]) -> None:
         """Update display when articles change."""
         try:
-            container = self.query_one("#news-list", ScrollableContainer)
-            container.remove_children()
+            log = self.query_one("#news-list", RichLog)
+            log.clear()
             
             if self.loading:
-                container.mount(Label("🔄 Loading news..."))
+                log.write("🔄 [yellow]Loading news...[/yellow]")
                 return
             
             if not articles:
-                container.mount(Label("[dim]No news available[/dim]"))
+                log.write("[dim]No news available[/dim]")
                 return
             
             logger.info(f"Displaying {len(articles)} articles")
@@ -225,13 +226,10 @@ class NewsWidget(Static):
                     "general": "📋"
                 }.get(article.category, "📋")
                 
-                # Render article
-                article_text = (
-                    f"[dim]{time_str}[/dim] {emoji} {article.title[:50]}\n"
-                    f"[dim]{article.source}[/dim]"
-                )
-                
-                container.mount(Label(article_text))
+                # Render article with Rich markup
+                log.write(f"[dim]{time_str}[/dim] {emoji} [bold]{article.title[:50]}[/bold]")
+                log.write(f"    [dim italic]{article.source}[/dim italic]")
+                log.write("")  # Empty line for spacing
         
         except Exception as e:
             logger.error(f"Error updating news display: {str(e)}")
@@ -425,17 +423,23 @@ class PredictionWidget(Static):
     
     def compose(self) -> ComposeResult:
         yield Label("⚽ Match Prediction")
-        yield Static(
-            "[dim]No match analyzed yet\\n\\nType a match below:\\n'Arsenal vs Chelsea'\\n\\nThen press Enter[/dim]",
-            id="prediction-content"
-        )
+        log = RichLog(id="prediction-content", highlight=True, markup=True)
+        log.write("[dim]No match analyzed yet\n\nType a match below:\n'Arsenal vs Chelsea'\n\nThen press Enter[/dim]")
+        yield log
     
     def watch_prediction_data(self, data) -> None:
         """Update prediction display."""
-        content = self.query_one("#prediction-content", Static)
+        try:
+            content = self.query_one("#prediction-content", RichLog)
+        except Exception:
+            # Widget may not be mounted yet
+            return
+        
+        # Clear previous content
+        content.clear()
         
         if not data:
-            content.update("[dim]No prediction available[/dim]")
+            content.write("[dim]No prediction available[/dim]")
             return
         
         pred = data.get('prediction')
@@ -443,36 +447,39 @@ class PredictionWidget(Static):
         collab = data.get('collaborative_analysis')
         
         if not pred:
-            content.update("[dim]No prediction data[/dim]")
+            content.write("[dim]No prediction data[/dim]")
             return
         
-        # Build display
-        display = f"""[bold]{data.get('home_team', '')}[/bold] vs [bold]{data.get('away_team', '')}[/bold]
-
-Expected Goals:
-  Home: [cyan]{pred.home_goals:.2f}[/cyan]  |  Away: [cyan]{pred.away_goals:.2f}[/cyan]
-
-Win Probabilities:
-  Home: [green]{pred.home_win_prob:.1%}[/green]
-  Draw: [yellow]{pred.draw_prob:.1%}[/yellow]
-  Away: [red]{pred.away_win_prob:.1%}[/red]
-
-Most Likely: [bold]{pred.most_likely_score}[/bold]
-"""
+        # Build display with proper Rich markup
+        content.write(f"[bold cyan]{data.get('home_team', '')}[/bold cyan] vs [bold magenta]{data.get('away_team', '')}[/bold magenta]")
+        content.write("")
+        content.write("[bold]Expected Goals:[/bold]")
+        content.write(f"  Home: [cyan]{pred.home_goals:.2f}[/cyan]  |  Away: [magenta]{pred.away_goals:.2f}[/magenta]")
+        content.write("")
+        content.write("[bold]Win Probabilities:[/bold]")
+        content.write(f"  Home: [green]{pred.home_win_prob:.1%}[/green]")
+        content.write(f"  Draw: [yellow]{pred.draw_prob:.1%}[/yellow]")
+        content.write(f"  Away: [red]{pred.away_win_prob:.1%}[/red]")
+        content.write("")
+        content.write(f"[bold]Most Likely:[/bold] [bold yellow]{pred.most_likely_score}[/bold yellow]")
         
         # Show collaborative analysis info if available
         if collab:
-            display += f"\n[bold]🤝 Collaborative AI:[/bold] Agreement {collab.agreement_score:.0%}"
-            display += f"\n[bold]AI Confidence:[/bold] {'⭐' * int(ai.confidence * 5)} ({ai.confidence:.0%})"
+            content.write("")
+            content.write(f"[bold]🤝 Collaborative AI:[/bold] Agreement [cyan]{collab.agreement_score:.0%}[/cyan]")
+            if ai:
+                stars = '⭐' * int(ai.confidence * 5)
+                content.write(f"[bold]AI Confidence:[/bold] {stars} [dim]({ai.confidence:.0%})[/dim]")
         elif ai:
-            display += f"\n[bold]AI Confidence:[/bold] {'⭐' * int(ai.confidence * 5)} ({ai.confidence:.0%})"
+            content.write("")
+            stars = '⭐' * int(ai.confidence * 5)
+            content.write(f"[bold]AI Confidence:[/bold] {stars} [dim]({ai.confidence:.0%})[/dim]")
         
         if ai and ai.key_factors:
-            display += f"\n\n[bold]Key Factors:[/bold]\n"
+            content.write("")
+            content.write("[bold]Key Factors:[/bold]")
             for factor in ai.key_factors[:3]:
-                display += f"  • {factor}\n"
-        
-        content.update(display)
+                content.write(f"  [dim]•[/dim] {factor}")
 
 
 class BetCopilotApp(App):
@@ -502,7 +509,18 @@ class BetCopilotApp(App):
         width: 1fr;
         border: solid cyan;
         padding: 1;
-        overflow-y: auto;
+        height: 100%;
+    }
+    
+    #news-list {
+        height: 100%;
+        border: none;
+        background: transparent;
+    }
+    
+    RichLog {
+        background: transparent;
+        border: none;
     }
     
     #middle-row {
@@ -514,12 +532,20 @@ class BetCopilotApp(App):
         width: 2fr;
         border: solid cyan;
         padding: 1;
+        height: 100%;
+    }
+    
+    #prediction-content {
+        height: 100%;
+        background: transparent;
+        border: none;
     }
     
     #market-watch {
         width: 3fr;
         border: solid yellow;
         padding: 1;
+        height: 100%;
     }
     
     #market-watch {
@@ -571,6 +597,7 @@ class BetCopilotApp(App):
         ("n", "toggle_news", "Toggle News"),
         ("m", "toggle_markets", "Alternative Markets"),
         ("ctrl+c", "quit", "Quit"),
+        ("up,down,pageup,pagedown", "scroll", "Scroll"),
     ]
     
     TITLE = "BET-COPILOT v0.5 - Multi-AI Analysis Dashboard"
