@@ -59,7 +59,7 @@ class BetCopilotSuggester(Suggester):
             "americanfootball_nfl", "basketball_nba", "icehockey_nhl",
         ]
     
-    async def get_suggestion(self, value: str) -> str | None:
+    async def get_suggestion(self, value: str) -> Optional[str]:
         """Get suggestion based on current input."""
         if not value:
             return None
@@ -591,7 +591,6 @@ class BetCopilotApp(App):
             football_client=self.football_client,
             soccer_predictor=self.soccer_predictor,
             kelly=self.kelly,
-            use_collaborative_analysis=True,
         )
         self.alt_markets = AlternativeMarketsPredictor()
     
