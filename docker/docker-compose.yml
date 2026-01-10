@@ -1,0 +1,56 @@
+# Bet-Copilot Alpha Deployment with Web Terminal
+version: '3.8'
+
+services:
+  # ttyd web terminal server
+  ttyd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ttyd
+    container_name: bet-copilot-ttyd
+    ports:
+      - "7681:7681"
+    environment:
+      - TTYD_USER=${TTYD_USER:-alpha_user}
+      - TTYD_PASS=${TTYD_PASS:-changeme123}
+      - ODDS_API_KEY=${ODDS_API_KEY}
+      - API_FOOTBALL_KEY=${API_FOOTBALL_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - bet-data:/data
+      - ../bet_copilot.db:/data/bet_copilot.db
+    networks:
+      - bet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7681/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Nginx reverse proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: bet-copilot-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - ttyd
+    networks:
+      - bet-network
+    restart: unless-stopped
+    profiles:
+      - production  # Only start with --profile production
+
+volumes:
+  bet-data:
+    driver: local
+
+networks:
+  bet-network:
+    driver: bridge

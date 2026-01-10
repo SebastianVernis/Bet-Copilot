@@ -1,0 +1,53 @@
+# Bet-Copilot Web Terminal - ttyd Docker Image
+FROM alpine:3.19
+
+LABEL maintainer="SebastianVernisMora"
+LABEL description="Bet-Copilot with ttyd web terminal access"
+LABEL version="0.7.0-alpha"
+
+# Install dependencies
+RUN apk add --no-cache \
+    ttyd \
+    bash \
+    python3 \
+    py3-pip \
+    sqlite \
+    curl \
+    ca-certificates
+
+# Create app directory
+WORKDIR /app
+
+# Copy application files
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+COPY bet_copilot ./bet_copilot
+COPY main.py .
+COPY cli.py .
+COPY .env.example .env
+
+# Create data directory for SQLite
+RUN mkdir -p /data && \
+    chmod 755 /data
+
+# Expose ttyd port
+EXPOSE 7681
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:7681/ || exit 1
+
+# Default command: ttyd with Python CLI
+# Override credentials via environment variables
+ENV TTYD_USER=alpha_user
+ENV TTYD_PASS=change_this_password
+
+CMD ttyd \
+    --port 7681 \
+    --credential ${TTYD_USER}:${TTYD_PASS} \
+    --max-clients 10 \
+    --client-option fontSize=16 \
+    --client-option fontFamily="'Fira Code', 'Courier New', monospace" \
+    --client-option theme='{"background": "#1a1a1a", "foreground": "#39FF14"}' \
+    python3 /app/main.py
