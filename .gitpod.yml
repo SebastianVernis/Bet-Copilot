@@ -1,0 +1,137 @@
+# Gitpod workspace configuration for Bet-Copilot
+image: gitpod/workspace-full
+
+# Puertos a exponer
+ports:
+  - port: 7681
+    name: "Web Terminal"
+    description: "Bet-Copilot ttyd web terminal"
+    visibility: public
+    onOpen: notify
+  
+  - port: 443
+    name: "HTTPS (nginx)"
+    visibility: public
+    onOpen: ignore
+  
+  - port: 80
+    name: "HTTP (nginx)"
+    visibility: public
+    onOpen: ignore
+
+# Comandos al iniciar workspace
+tasks:
+  - name: Setup & Deploy
+    init: |
+      echo "🔧 Inicializando workspace..."
+      
+      # Checkout branch correcto
+      git checkout laptop/feature/web-terminal-shellinabox 2>/dev/null || echo "Ya en branch correcto"
+      
+      # Crear .env desde variables de entorno de Gitpod o template
+      if [ ! -f docker/.env ]; then
+        echo "📝 Creando docker/.env..."
+        cat > docker/.env <<EOF
+# Bet-Copilot Configuration for Gitpod
+
+# ttyd Authentication
+TTYD_USER=${TTYD_USER:-admin}
+TTYD_PASS=${TTYD_PASS:-gitpod_demo_${GITPOD_WORKSPACE_ID:0:8}}
+
+# API Keys
+ODDS_API_KEY=${ODDS_API_KEY:-your_odds_api_key_here}
+API_FOOTBALL_KEY=${API_FOOTBALL_KEY:-your_football_api_key_here}
+GEMINI_API_KEY=${GEMINI_API_KEY:-your_gemini_api_key_here}
+
+# Optional: Blackbox API
+BLACKBOX_API_KEY=${BLACKBOX_API_KEY:-}
+
+# Database
+DB_PATH=/data/bet_copilot.db
+
+# Logging
+LOG_LEVEL=INFO
+EOF
+        echo "✅ docker/.env creado"
+      else
+        echo "✅ docker/.env ya existe"
+      fi
+      
+      # Verificar si hay API keys configuradas
+      if grep -q "your_odds_api_key_here" docker/.env 2>/dev/null; then
+        echo ""
+        echo "⚠️  IMPORTANTE: Configura tus API keys en docker/.env"
+        echo "   O usa variables de entorno de Gitpod:"
+        echo "   Dashboard → Settings → Variables"
+        echo ""
+      fi
+      
+      # Instalar dependencias Python (para testing local)
+      echo "📦 Instalando dependencias Python..."
+      pip install -q -r requirements.txt
+      
+      echo ""
+      echo "✅ Workspace inicializado correctamente"
+    
+    command: |
+      clear
+      echo ""
+      echo "╔═══════════════════════════════════════════════════╗"
+      echo "║                                                   ║"
+      echo "║        BET-COPILOT GITPOD WORKSPACE               ║"
+      echo "║     Sistema de Análisis Especulativo Web         ║"
+      echo "║                                                   ║"
+      echo "╚═══════════════════════════════════════════════════╝"
+      echo ""
+      echo "📝 PASOS PARA INICIAR:"
+      echo ""
+      echo "  1️⃣  Configurar API keys (IMPORTANTE):"
+      echo "      nano docker/.env"
+      echo ""
+      echo "  2️⃣  Desplegar web terminal:"
+      echo "      ./scripts/deploy_alpha.sh"
+      echo ""
+      echo "  3️⃣  Acceder al terminal:"
+      echo "      - Panel 'Ports' → Abrir puerto 7681"
+      echo "      - Usuario: admin"
+      echo "      - Password: (ver docker/.env)"
+      echo ""
+      echo "⚡ COMANDOS RÁPIDOS:"
+      echo ""
+      echo "  # Ver logs contenedor"
+      echo "  docker-compose -f docker/docker-compose.yml logs -f ttyd"
+      echo ""
+      echo "  # Reiniciar contenedor"
+      echo "  docker-compose -f docker/docker-compose.yml restart"
+      echo ""
+      echo "  # Obtener URL pública"
+      echo "  gp url 7681"
+      echo ""
+      echo "  # Probar CLI localmente (sin Docker)"
+      echo "  python3 main.py"
+      echo ""
+      echo "⏱️  Gitpod Free: 50 horas/mes | Timeout: 30 min inactividad"
+      echo "💡 Pausar cuando termines: gp stop"
+      echo ""
+      echo "📚 Documentación completa: GITPOD_SETUP_GUIDE.md"
+      echo ""
+
+# GitHub integration - prebuilds para inicio más rápido
+github:
+  prebuilds:
+    master: true
+    branches: true
+    pullRequests: true
+    pullRequestsFromForks: false
+    addCheck: false
+    addComment: false
+    addBadge: false
+
+# VS Code extensions recomendadas
+vscode:
+  extensions:
+    - ms-python.python
+    - ms-python.vscode-pylance
+    - ms-azuretools.vscode-docker
+    - eamodio.gitlens
+    - yzhang.markdown-all-in-one

@@ -5,6 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Status](https://img.shields.io/badge/Status-Active-success)
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/SebastianVernis/Bet-Copilot)
 
 ---
 
@@ -83,12 +84,27 @@ Ver documentación completa: [docs/SCROLL_NAVIGATION.md](docs/SCROLL_NAVIGATION.
 
 ## 🚀 Instalación
 
-### Requisitos
+### ⚡ Opción 1: Gitpod (Más Rápido - 2 minutos)
+
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/SebastianVernis/Bet-Copilot)
+
+- ✅ **50 horas/mes gratis**
+- ✅ **Docker preinstalado**
+- ✅ **Web terminal con SSL automático**
+- ✅ **No requiere instalación local**
+
+Ver guía: [GITPOD_QUICKSTART.md](GITPOD_QUICKSTART.md)
+
+---
+
+### 🖥️ Opción 2: Instalación Local
+
+#### Requisitos
 - Python 3.8 o superior
 - pip (gestor de paquetes)
 - API Keys (opcionales para funcionalidad completa)
 
-### Instalación Básica
+#### Pasos
 
 ```bash
 # Clonar repositorio
@@ -108,6 +124,26 @@ pip install -r requirements.txt
 cp .env.example .env
 # Editar .env con tus API keys
 ```
+
+---
+
+### 🐳 Opción 3: Web Terminal (Docker)
+
+Despliegue contenedorizado con ttyd:
+
+```bash
+# 1. Configurar credenciales
+cp docker/.env.example docker/.env
+nano docker/.env  # Editar con tus API keys
+
+# 2. Desplegar
+./scripts/deploy_alpha.sh
+
+# 3. Acceder
+# http://localhost:7681
+```
+
+Ver guía completa: [docs/web_terminal/SETUP.md](docs/web_terminal/SETUP.md)
 
 ### Configuración de API Keys
 
